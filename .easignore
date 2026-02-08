@@ -1,0 +1,147 @@
+﻿# EAS Build ignore rules - exclude heavy/binary and local build artifacts
+# Keep this file in repo so EAS uploads a clean project archive
+
+# Gradle & native build artifacts (CMake/NDK intermediates)
+android/app/.cxx
+android/.cxx
+android/app/.externalNativeBuild
+android/.externalNativeBuild
+
+# Gradle build outputs
+android/app/build
+android/build
+android/.gradle
+
+# Local configuration and caches
+android/local.properties
+.gradle
+
+# IDE and OS files
+.idea
+.vscode
+.DS_Store
+Thumbs.db
+
+# Expo / EAS local artifacts
+.expo
+.expo/*
+eas-build-cache
+
+# Node modules (server installs dependencies)
+node_modules
+
+# Logs and temp files
+*.log
+*.tmp
+*.temp
+# Exclude large or unnecessary files from EAS build upload to reduce archive size
+
+# Node modules (will be installed on build servers)
+node_modules
+**/node_modules
+
+# Gradle and build caches
+.gradle
+android/.gradle
+
+# Exclude build output directories but keep native source files
+android/**/build
+android/build
+android/app/build
+
+# Exclude generated / packaged artifacts (APKs, AABs, APKS archives, zips)
+*.apk
+*.aab
+*.apks
+*.zip
+exdollarium-*.apks
+exdollarium-*.zip
+application-*.aab
+exdollarium-notifier.apks
+exdollarium-dev-client.zip
+exdollarium-lite.zip
+
+# Keystores and bundletool (sensitive / large)
+*.keystore
+*.jks
+my-release-key.keystore
+bundletool-all*.jar
+
+# Expo/Metro artifacts and caches
+.expo
+.expo-shared
+dist
+build
+
+# Editor/OS junk
+.vscode
+.idea
+.DS_Store
+*.log
+*.tmp
+
+# Environment files
+.env
+.env.*
+
+# Ignore node package lock if you prefer (keep if you want it uploaded)
+# package-lock.json
+
+# Re-include important project files and folders (ensure they're uploaded)
+!app.config.ts
+!app.json
+!package.json
+!package-lock.json
+!yarn.lock
+!tsconfig.json
+!src/
+!assets/
+!android/**
+!ios/**
+
+# End of .easignore
+# Node dependencies (will be reinstalled during build)
+node_modules
+
+# Build and cache files
+*.log
+npm-debug.*
+yarn-debug.log*
+yarn-error.log*
+.expo
+.expo-shared
+.gradle
+android/.gradle
+android/app/build
+ios/Pods
+ios/build
+build
+dist
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Git-related
+.git
+.gitignore
+
+# IDE/editor config
+*.swp
+.vscode
+.idea
+
+# Test and mock files
+__tests__/
+coverage/
+jest.config.js
+*.spec.js
+*.test.js
+*.mock.js
+
+# Environment files (optional — exclude if not needed in build)
+.env
+.env.local
+.env.production
+.env.development
+.env.*.local

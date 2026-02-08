@@ -1,0 +1,29 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "esnext",
+    "strict": true,
+    "jsx": "react-native",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+  "allowJs": true,
+  "checkJs": false,
+    "skipLibCheck": true,
+  "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": false,
+  "outDir": "./dist"
+  },
+  "include": [
+    "src/**/*",
+    "App.tsx",
+    "plugins/**/*.ts",
+    "app.config.ts",
+    "plugins/withAndroidManifest.js"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

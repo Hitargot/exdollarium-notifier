@@ -1,0 +1,1087 @@
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  FlatList,
+  TouchableOpacity,
+  RefreshControl,
+  StyleSheet,
+  Linking,
+  Alert,
+  Dimensions,
+} from 'react-native';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+// @ts-ignore: optional dependency in some environments where @react-navigation/native types are not installed
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import authStorage from '../utils/authStorage';
+
+import SkeletonBox from '../components/SkeletonBox';
+import ActionButton from '../components/ActionButton';
+import { buildTransactionReceipt, buildConfirmationReceipt } from '../utils/receiptBuilders';
+import { normalizeTransactionRef, isMinimalTransaction } from '../utils/receiptHelpers';
+import ServicePickerModal from '../components/ServicePickerModal';
+import TransactionItem from '../components/TransactionItem';
+import { getWalletData, getConfirmations, getTransactions, getProfile, getPreSubmissionsCount, getNotifications, markNotificationRead, markAllNotificationsRead, getTransactionReceipt, getConfirmationReceipt } from '../api/client';
+import { sanitizeReceipt } from '../utils/receiptSanitizer';
+import { showToast } from '../utils/toast';
+import { getLastLoadedAt, setLastLoadedAt, getCachedTransactions, setCachedTransactions } from '../utils/transactionCache';
+import { set as simpleCacheSet, setLastLoadedAt as simpleCacheSetLastLoadedAt, setFetching as simpleCacheSetFetching, isFetching as simpleCacheIsFetching } from '../utils/simpleCache';
+// Modal removed: notifications now live in a dedicated Notifications screen
+import staticTheme from '../styles/theme';
+import { useTheme } from '../theme/index';
+import ScreenHeader from '../components/ScreenHeader';
+import Flyer from '../components/Flyer';
+import { pickContrastText } from '../theme/colorUtils';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import NavBar from '../components/NavBar';
+import BalanceSparkline from '../components/BalanceSparkline';
+import { showInAppToast } from '../contexts/ToastContext';
+import { showInAppConfirm } from '../contexts/ConfirmContext';
+import Constants from 'expo-constants';
+
+// Prefer an explicit configured API URL. Avoid falling back to a production
+// host by default so local/dev builds don't accidentally hammer the remote
+// Heroku instance when no apiUrl is provided in expo config.
+const API_URL = (Constants.expoConfig?.extra?.apiUrl || '').replace(/\/+$/, '');
+
+const DashboardScreen = () => {
+  const themeCtx = (() => { try { return useTheme(); } catch (e) { return undefined as any; } })();
+  // New ThemeProvider exposes the merged theme at top-level, fall back to staticTheme
+  const theme = themeCtx || staticTheme;
+  // runtime styles bound to theme
+  const styles = useStyles(theme);
+  const navigation: any = useNavigation();
+  const route = useRoute();
+
+  const [loading, setLoading] = useState<boolean>(() => {
+    try {
+      const cached = getCachedTransactions();
+      return !(cached && cached.length);
+    } catch (e) {
+      return true;
+    }
+  });
+  const [refreshing, setRefreshing] = useState(false);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [balanceVisible, setBalanceVisible] = useState<boolean>(true);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [countdowns, setCountdowns] = useState<Record<string, string>>({});
+  const [selectedService, setSelectedService] = useState<string>('');
+  const [selectedServiceLabel, setSelectedServiceLabel] = useState<string>('');
+  const [showModal, setShowModal] = useState(false);
+  // track current user profile so UI can reference profile?.username safely
+  const [profile, setProfile] = useState<any | null>(null);
+
+  const countdownInterval = useRef<number | null>(null);
+  const [activeTab, setActiveTab] = useState<'Home' | 'History' | 'Profile' | 'Help'>('Home');
+  const [preCount, setPreCount] = useState<number>(0);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState<number>(0);
+  // undoVisible removed; use in-app toast with action for Undo
+
+  const insets = useSafeAreaInsets();
+  const undoPrevRef = useRef<any[] | null>(null);
+  const undoTimeoutRef = useRef<number | null>(null);
+
+  const handleMarkAll = async () => {
+    // Snapshot previous notifications so we can undo locally
+    const prev = notifications;
+    undoPrevRef.current = prev;
+
+    try {
+      // Optimistically mark all as read in UI
+      setNotifications((prevList) => (prevList || []).map((n: any) => ({ ...n, read: true })));
+      setUnreadCount(0);
+      // Auto-clear undo snapshot after 6s
+      if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current as any);
+      undoTimeoutRef.current = setTimeout(() => { undoPrevRef.current = null; }, 6000) as unknown as number;
+
+      // Fire server request, but don't block the UI
+      await markAllNotificationsRead();
+      showToast('All notifications marked read');
+    } catch (e) {
+      console.warn('Mark all notifications error', e);
+      showToast('Failed to mark all notifications');
+      // revert optimistic update on failure
+      if (undoPrevRef.current) {
+        setNotifications(undoPrevRef.current);
+        const ucount = Array.isArray(undoPrevRef.current) ? undoPrevRef.current.filter((n: any) => !n.read).length : 0;
+        setUnreadCount(ucount);
+        undoPrevRef.current = null;
+      }
+    }
+  };
+
+  const handleUndoMarkAll = () => {
+    if (undoTimeoutRef.current) { clearTimeout(undoTimeoutRef.current as any); undoTimeoutRef.current = null; }
+    const prev = undoPrevRef.current;
+    if (prev) {
+      setNotifications(prev);
+      const ucount = Array.isArray(prev) ? prev.filter((n: any) => !n.read).length : 0;
+      setUnreadCount(ucount);
+      undoPrevRef.current = null;
+      showToast('Undo: notifications restored locally');
+    }
+  };
+
+  // Format badge count for display (cap at 20+ to avoid ugly overflow)
+  const formatBadgeCount = (n: number) => {
+    if (!n || n <= 0) return '';
+    return n >= 20 ? '20+' : String(n);
+  };
+
+  const handleMarkOne = async (item: any) => {
+    try {
+      await markNotificationRead(item._id);
+      setNotifications((prev) => prev.map((n) => (n._id === item._id ? { ...n, read: true } : n)));
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+      showToast('Notification marked read');
+    } catch (e) {
+      console.warn('Failed to mark notification', e);
+      showToast('Failed to mark notification');
+    }
+  };
+
+  const showUnableToOpenAlert = (item: any, title = 'Unable to open', message = 'Could not load details for this notification. Would you like to mark it as read?') => {
+    (async () => {
+      try {
+        if (item?.read) {
+          // Show info-style modal (single Close button)
+          await showInAppConfirm({ title, message: message.replace(' Would you like to mark it as read?', '').replace('Would you like to mark it as read?', ''), confirmText: 'Close', cancelText: '' });
+        } else {
+          // Prompt user to mark as read (Confirm + Cancel)
+          const ok = await showInAppConfirm({ title, message, confirmText: 'Mark', cancelText: 'Close' });
+          if (ok) handleMarkOne(item);
+        }
+      } catch (e) {
+        // fallback to Alert if something goes wrong
+        if (item?.read) {
+          Alert.alert(title, message.replace(' Would you like to mark it as read?', '').replace('Would you like to mark it as read?', ''), [
+            { text: 'Close', style: 'cancel' },
+          ]);
+        } else {
+          Alert.alert(title, message, [
+            { text: 'Mark', onPress: () => handleMarkOne(item) },
+            { text: 'Close', style: 'cancel' },
+          ]);
+        }
+      }
+    })();
+  };
+
+  const handleNotificationPress = async (item: any) => {
+    // Try to fetch a full receipt and navigate. If we cannot fetch, offer the user to mark the notification instead of auto-closing.
+    try {
+      const rawId = item.transactionId || item.transactionRef || item.resourceId;
+      const parsedFromMessage = normalizeTransactionRef(item.message || item.title || item.body || '');
+      const id = rawId || parsedFromMessage;
+
+      if (item.type && item.type.toLowerCase().includes('presubmission')) {
+        // notifications are now a separate screen; closing handled by navigation
+        navigation.navigate('MyPreSubmissions' as any);
+        try { await markNotificationRead(item._id); setUnreadCount((p) => Math.max(0, p - 1)); setNotifications((prev) => prev.map((n) => n._id === item._id ? { ...n, read: true } : n)); } catch { };
+        return;
+      }
+
+      if (item.transactionId || item.transactionRef || item.resourceId) {
+        const rawId2 = item.transactionId || item.transactionRef || item.resourceId;
+        const parsed = normalizeTransactionRef(item.message || item.title || item.body || '');
+        const id2 = rawId2 || parsed;
+        const trxResp = id2 ? await getTransactionReceipt(id2).catch(() => null) : null;
+        if (trxResp) {
+          const receiptData = buildTransactionReceipt(trxResp);
+          if (!receiptData.transactionRef) receiptData.transactionRef = normalizeTransactionRef(trxResp.transactionId || trxResp._id || trxResp.id || id2);
+          if (!receiptData.date) receiptData.date = trxResp.date || trxResp.createdAt || undefined;
+          const sanitized = sanitizeReceipt(receiptData);
+          // navigation will handle closing notifications screen
+          navigation.navigate('Receipt' as any, { receiptData: sanitized } as any);
+          try { await markNotificationRead(item._id); setUnreadCount((p) => Math.max(0, p - 1)); setNotifications((prev) => prev.map((n) => n._id === item._id ? { ...n, read: true } : n)); } catch { }
+          return;
+        }
+
+        // cannot fetch a real receipt — ask the user whether to mark it or close
+        showUnableToOpenAlert(item);
+        return;
+      }
+
+      if (item.resourceType === 'transaction' || (item.type && item.type.toLowerCase().includes('withdrawal'))) {
+        const trxId = item.transactionRef || item.resourceId || item.transactionId;
+        const trxResp = trxId ? await getTransactionReceipt(trxId).catch(() => null) : null;
+        if (trxResp) {
+          const receiptData = buildTransactionReceipt(trxResp);
+          if (!receiptData.transactionRef) receiptData.transactionRef = trxResp.transactionId || trxResp._id || trxResp.id || undefined;
+          if (!receiptData.date) receiptData.date = trxResp.date || trxResp.createdAt || undefined;
+          const sanitized = sanitizeReceipt(receiptData);
+          // navigation will handle closing notifications screen
+          navigation.navigate('Receipt' as any, { receiptData: sanitized } as any);
+          try { await markNotificationRead(item._id); setUnreadCount((p) => Math.max(0, p - 1)); setNotifications((prev) => prev.map((n) => n._id === item._id ? { ...n, read: true } : n)); } catch { }
+          return;
+        }
+
+        showUnableToOpenAlert(item);
+        return;
+      }
+
+      if (item.resourceType === 'confirmation' || item.type && item.type.toLowerCase().includes('confirmation')) {
+        const confResp = await getConfirmationReceipt(item.resourceId || item.transactionId).catch(() => null);
+        if (confResp) {
+          const receiptData = buildConfirmationReceipt(confResp);
+          if (!receiptData.transactionRef) receiptData.transactionRef = confResp.transactionId || confResp._id || confResp.id || undefined;
+          if (!receiptData.date) receiptData.date = confResp.date || confResp.createdAt || undefined;
+          // navigation will handle closing notifications screen
+          navigation.navigate('Receipt' as any, { receiptData } as any);
+          try { await markNotificationRead(item._id); setUnreadCount((p) => Math.max(0, p - 1)); setNotifications((prev) => prev.map((n) => n._id === item._id ? { ...n, read: true } : n)); } catch { }
+          return;
+        }
+
+        showUnableToOpenAlert(item);
+        return;
+      }
+    } catch (e) {
+      console.warn('Notification press error', e);
+      if (item?.read) {
+        Alert.alert('Error', 'An error occurred while opening this notification.', [{ text: 'Close', style: 'cancel' }]);
+      } else {
+        Alert.alert('Error', 'An error occurred while opening this notification. You can mark it as read instead.', [
+          { text: 'Mark', onPress: () => handleMarkOne(item) },
+          { text: 'Close', style: 'cancel' },
+        ]);
+      }
+    }
+  };
+
+  const normalizeTxns = (walletTxns: any[] = [], txnApi: any[] = [], confirmations: any[] = [], userId?: string) => {
+    const normalize = (t: any, fallbackType?: string) => ({
+      ...t,
+      rawType: t.type,
+      type: (t.type || fallbackType || 'Unknown'),
+      time: new Date(t.createdAt || t.date || Date.now()).getTime(),
+    });
+
+    const fundings = (walletTxns || [])
+      .filter((t: any) => t.type === 'Funding')
+      .map((t: any) => normalize(t, 'Funding'));
+
+    const withdrawals = (txnApi || [])
+      .filter((t: any) => (t.type || '').toString().toLowerCase().includes('withdrawal') || t.type === 'Withdrawal')
+      .map((t: any) => normalize(t, 'Withdrawal'));
+
+    const transfers = (txnApi || [])
+      .filter((t: any) => (t.type || '').toString().toLowerCase().includes('transfer'))
+      .map((t: any) => {
+        const senderIdStr = typeof t.senderId === 'object' ? t.senderId?._id?.toString() : t.senderId?.toString?.();
+        const isSender = !!(userId && senderIdStr === userId?.toString());
+        return {
+          ...normalize(t, 'Transfer'),
+          type: isSender ? 'Sent Transfer' : 'Received Transfer',
+        };
+      });
+
+    const confs = (confirmations || []).map((c: any) => ({
+      ...normalize(c, 'Trade Confirmation'),
+      type: 'Trade Confirmation',
+      serviceName: c.serviceId?.name || c.serviceName || 'N/A',
+      serviceTag: c.tag || c.serviceTag || undefined,
+    }));
+
+    return [...fundings, ...withdrawals, ...transfers, ...confs]
+      .sort((a, b) => b.time - a.time);
+  };
+
+  const loadData = async () => {
+    // Mark load start so focus checks won't trigger a duplicate fetch while this one runs.
+    try { setLastLoadedAt(Date.now()); } catch (e) { /* ignore */ }
+    try { simpleCacheSetLastLoadedAt('transactions', Date.now()); } catch (e) { /* ignore */ }
+    try { /* mark in-flight on simpleCache to prevent concurrent loads */ simpleCacheSetFetching('transactions', true); } catch (e) { /* ignore */ }
+    // In-flight guard to prevent overlapping loads
+    const isFetchingRef: any = (loadData as any).__isFetchingRef || { current: false };
+    if ((isFetchingRef && isFetchingRef.current)) return;
+    if (!(loadData as any).__isFetchingRef) (loadData as any).__isFetchingRef = isFetchingRef;
+    isFetchingRef.current = true;
+
+    // If we already have cached transactions (in-memory), populate them immediately
+    const cachedBefore = getCachedTransactions();
+    if (cachedBefore && cachedBefore.length) {
+      setTransactions(cachedBefore);
+      // avoid showing full-screen skeleton when cached exists
+    } else {
+      setLoading(true);
+    }
+    console.debug('[Dashboard] loadData start - cachedBefore length =', cachedBefore ? cachedBefore.length : 0);
+
+    try {
+      const token = await authStorage.getToken();
+      const [profileRes, walletRes, txRes, confRes] = await Promise.all([
+        getProfile().catch(() => null),
+        getWalletData().catch(() => ({ transactions: [], balance: 0 })),
+        getTransactions().catch(() => ({ transactions: [] })),
+        getConfirmations().catch(() => ({ confirmations: [] })),
+      ]);
+
+      const userId = profileRes?._id;
+      // persist fetched profile to local state so UI can reference it
+      try { setProfile(profileRes || null); } catch (e) { /* ignore */ }
+      const walletBalanceVal = walletRes?.balance ?? walletRes?.data?.balance ?? 0;
+      setWalletBalance(walletBalanceVal);
+
+      const walletTxns = walletRes?.transactions || walletRes?.data?.transactions || [];
+      const apiTxns = txRes?.transactions || txRes?.data?.transactions || [];
+      const confs = confRes?.confirmations || confRes?.data?.confirmations || [];
+
+      const combined = normalizeTxns(walletTxns, apiTxns, confs, userId).slice(0, 20);
+      setTransactions(combined);
+      // cache transactions and mark last loaded time so we can avoid refetching on quick navigations
+      try {
+        setCachedTransactions(combined);
+        setLastLoadedAt(Date.now());
+        // mirror to simpleCache so other screens (History) can see it
+        try { simpleCacheSet('transactions', combined); simpleCacheSetLastLoadedAt('transactions', Date.now()); } catch (_) { }
+        console.debug('[Dashboard] loadData finished - cached txns set, count =', combined.length);
+      } catch (e) {
+        // ignore cache set errors
+      }
+    } catch (err) {
+      console.warn('Dashboard load error', err);
+    } finally {
+      try { simpleCacheSetFetching('transactions', false); } catch (e) { }
+      setLoading(false);
+      setRefreshing(false);
+      try { isFetchingRef.current = false; } catch (e) { /* ignore */ }
+    }
+  };
+
+  useEffect(() => {
+    if (countdownInterval.current) clearInterval(countdownInterval.current as any);
+    countdownInterval.current = setInterval(() => {
+      setCountdowns((prev) => {
+        const next: Record<string, string> = {};
+        transactions.forEach((txn) => {
+          if (txn.type === 'Trade Confirmation' && txn.status?.toLowerCase() === 'pending' && txn.createdAt) {
+            const created = new Date(txn.createdAt);
+            const now = new Date();
+            const totalMinutes = 180;
+            const elapsed = Math.floor((now.getTime() - created.getTime()) / 60000);
+            const remaining = totalMinutes - elapsed;
+            if (remaining > 0) {
+              const hrs = Math.floor(remaining / 60);
+              const mins = remaining % 60;
+              next[txn._id] = `${hrs > 0 ? `${hrs}h ` : ''}${mins}m left`;
+            } else {
+              next[txn._id] = 'expired';
+            }
+          }
+        });
+        return next;
+      });
+    }, 1000) as unknown as number;
+
+    return () => {
+      if (countdownInterval.current) clearInterval(countdownInterval.current as any);
+    };
+  }, [transactions]);
+
+  useEffect(() => {
+    (async () => {
+      // read saved defaultService in hydrateSaved below (avoid setting id immediately so we can resolve label first)
+
+      try {
+        const savedVis = await AsyncStorage.getItem('balanceVisible');
+        if (savedVis !== null) {
+          setBalanceVisible(savedVis === 'true');
+        }
+      } catch (e) {
+        // ignore
+      }
+
+      // Pre-populate from cache so returning users see previous transactions instantly
+      try {
+        const cached = getCachedTransactions();
+        if (cached && cached.length) setTransactions(cached);
+      } catch (e) {
+        // ignore cache read errors
+      }
+
+      // If a saved default service id exists, try to fetch its human-friendly name/label
+      const hydrateSaved = async () => {
+        try {
+          const saved = await AsyncStorage.getItem('defaultService');
+          if (!saved) { loadData(); return; }
+          // attempt to fetch by id first
+          try {
+            const res = await fetch(`${API_URL}/api/services/${encodeURIComponent(saved)}`);
+            if (res.ok) {
+              const s = await res.json();
+              setSelectedServiceLabel((s.label || s.name || '') + (s.isNew ? ' (NEW)' : ''));
+              // persist internal service identifier so other actions can use it
+              setSelectedService(saved);
+            } else {
+              // fallback: list and search
+              const listRes = await fetch(`${API_URL}/api/services`);
+              if (listRes.ok) {
+                const arr = await listRes.json();
+                const found = arr.find((x: any) => x._id === saved || x.name === saved);
+                if (found) setSelectedServiceLabel((found.label || found.name || '') + (found.isNew ? ' (NEW)' : ''));
+                if (found) setSelectedService(found.name || found._id || saved);
+              }
+            }
+          } catch (e) {
+            // ignore lookup errors
+          }
+        } finally {
+          loadData();
+        }
+      };
+
+      hydrateSaved();
+    })();
+  }, []);
+
+
+
+  useFocusEffect(
+    useCallback(() => {
+      // Only reload if we haven't loaded recently (TTL = 5 minutes)
+      const TTL = 5 * 60 * 1000;
+      const last = getLastLoadedAt();
+      const inflight = simpleCacheIsFetching('transactions');
+      console.debug('[Dashboard] onFocus - lastLoadedAt =', last, 'now - last =', last ? (Date.now() - last) : 'n/a', 'inflight =', inflight);
+      // If another screen is already fetching transactions, skip triggering another load.
+      if (inflight) {
+        console.debug('[Dashboard] onFocus -> skipping loadData() (fetch in-flight)');
+      } else if (!last || (Date.now() - last) > TTL) {
+        console.debug('[Dashboard] onFocus -> calling loadData()');
+        loadData();
+      } else {
+        console.debug('[Dashboard] onFocus -> skipping loadData() (within TTL)');
+      }
+      // update pre-submissions count when screen focused
+      // Fetch pre-submission count first so header shows tag badge ASAP
+      (async () => {
+        try {
+          const c = await getPreSubmissionsCount();
+          setPreCount(c);
+          // immediately update header to show preCount without waiting for notifications
+          try {
+            navigation.setOptions({
+              headerRight: () => (
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 8 }}>
+                  <TouchableOpacity onPress={() => navigation.navigate('Notifications' as any)} style={{ marginRight: 12 }}>
+                    <View style={{ position: 'relative' }}>
+                      <Ionicons name="notifications-outline" size={24} color={theme.colors.primary} />
+                      {unreadCount > 0 && (
+                        <View style={{ position: 'absolute', right: -6, top: -6, backgroundColor: theme.colors.error, borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1 }}>
+                          <Text style={{ color: theme.colors.white, fontSize: 11, fontWeight: '700' }}>{unreadCount}</Text>
+                        </View>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => navigation.navigate('MyPreSubmissions' as any)}>
+                    <View style={{ position: 'relative' }}>
+                      <Ionicons name="pricetag-outline" size={24} color={theme.colors.primary} />
+                      {c > 0 && (
+                        <View style={{ position: 'absolute', right: -6, top: -6, backgroundColor: theme.colors.error, borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1 }}>
+                          <Text style={{ color: theme.colors.white, fontSize: 11, fontWeight: '700' }}>{c}</Text>
+                        </View>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                </View>
+              ),
+            });
+          } catch (e) {
+            // ignore
+          }
+        } catch (err) {
+          // ignore header update errors
+        }
+      })();
+
+      // fetch notifications and unread count
+      (async () => {
+        try {
+          const res = await getNotifications();
+          const list = res.notifications || res.data || [];
+          setNotifications(list || []);
+          const ucount = Array.isArray(list) ? list.filter((n: any) => !n.read).length : 0;
+          setUnreadCount(ucount);
+          // Immediately update header so badge shows without waiting for effect
+          try {
+            navigation.setOptions({
+              headerRight: () => (
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 8 }}>
+                  <TouchableOpacity onPress={() => navigation.navigate('Notifications' as any)} style={{ marginRight: 12 }}>
+                    <View style={{ position: 'relative' }}>
+                      <Ionicons name="notifications-outline" size={24} color={theme.colors.primary} />
+                      {ucount > 0 && (
+                        <View style={{ position: 'absolute', right: -6, top: -6, backgroundColor: theme.colors.error, borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1 }}>
+                          <Text style={{ color: theme.colors.white, fontSize: 11, fontWeight: '700' }}>{ucount}</Text>
+                        </View>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => navigation.navigate('MyPreSubmissions' as any)}>
+                    <View style={{ position: 'relative' }}>
+                      <Ionicons name="pricetag-outline" size={24} color={theme.colors.primary} />
+                      {preCount > 0 && (
+                        <View style={{ position: 'absolute', right: -6, top: -6, backgroundColor: theme.colors.error, borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1 }}>
+                          <Text style={{ color: theme.colors.white, fontSize: 11, fontWeight: '700' }}>{preCount}</Text>
+                        </View>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                </View>
+              ),
+            });
+          } catch (e) {
+            // ignore navigation setOptions errors
+          }
+        } catch (e) {
+          // ignore
+        }
+      })();
+    }, [])
+  );
+
+  // keep headerRight in sync with unreadCount and preCount (avoid stale closure capture)
+  useEffect(() => {
+    navigation.setOptions({
+      // Keep the Dashboard title in the native header and remove any back arrow
+      headerTitle: 'Dashboard',
+      headerLeft: () => null,
+      headerRight: () => (
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 8 }}>
+          <TouchableOpacity onPress={() => navigation.navigate('Notifications' as any)} style={{ marginRight: 12 }}>
+            <View style={{ position: 'relative' }}>
+              <Ionicons name="notifications-outline" size={24} color={theme.colors.primary} />
+              {unreadCount > 0 && (
+                <View style={{ position: 'absolute', right: -6, top: -6, backgroundColor: '#FF3B30', borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1 }}>
+                  <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{unreadCount}</Text>
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate('MyPreSubmissions' as any)}>
+            <View style={{ position: 'relative' }}>
+              <Ionicons name="pricetag-outline" size={24} color={theme.colors.primary} />
+              {preCount > 0 && (
+                <View style={{ position: 'absolute', right: -6, top: -6, backgroundColor: '#FF3B30', borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1 }}>
+                  <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{preCount}</Text>
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+        </View>
+      ),
+    });
+  }, [navigation, unreadCount, preCount]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    return loadData();
+  }, []);
+
+  const handleViewReceipt = async (txn: any) => {
+    // Copy of HistoryScreen's sanitize/build logic to ensure Dashboard produces the same
+    // serializable receipt shape (no React elements/functions) and includes a transactionRef
+    const sanitizeReceipt = (r: any) => {
+      const isReactElement = (v: any) => v && typeof v === 'object' && v.$$typeof !== undefined;
+      const cloned: any = { ...r };
+      cloned.fields = (r.fields || []).map((f: any) => {
+        let value = f.value;
+        if (isReactElement(value)) {
+          value = '[attachment]';
+        } else if (Array.isArray(value)) {
+          value = value
+            .map((v2: any) => {
+              if (typeof v2 === 'string' || typeof v2 === 'number' || typeof v2 === 'boolean') return v2;
+              if (v2 && typeof v2 === 'object') {
+                if (v2.uri) return v2.uri;
+                if (v2.props && typeof v2.props.children === 'string') return v2.props.children;
+                try { return JSON.stringify(v2); } catch { return String(v2); }
+              }
+              return String(v2);
+            })
+            .filter(Boolean);
+        }
+        return { ...f, value };
+      });
+      if (cloned.transactionRef) cloned.transactionRef = String(cloned.transactionRef);
+      return cloned;
+    };
+
+    // Fetch current user profile so we can attach username/email to receipts built client-side
+    const profile = await getProfile().catch(() => null);
+
+    // If a pre-built receipt exists on the txn, use it (sanitized)
+    if (txn.receipt) {
+      const sanitized = sanitizeReceipt(txn.receipt);
+      sanitized.header = sanitized.header || {};
+      if (profile?.username) sanitized.header.username = profile.username;
+      if (profile?.email) sanitized.header.email = profile.email;
+      return navigation.navigate('Receipt' as any, { receiptData: sanitized } as any);
+    }
+
+    const receiptData: any = { title: 'Transaction Receipt', fields: [] };
+    // Ensure top-level type is present so ReceiptScreen can use it when fields omit 'Type'
+    receiptData.type = txn.type || receiptData.type;
+    const transactionId = txn.transactionId || txn._id || 'N/A';
+    const typeNorm = (txn.type || '').toString().toLowerCase();
+
+    // Attach transactionRef so ReceiptScreen can async-enrich for parity with History
+    if (txn.transactionRef) receiptData.transactionRef = String(txn.transactionRef);
+    else if (txn._id) receiptData.transactionRef = String(txn._id);
+    else if (txn.transactionId) receiptData.transactionRef = String(txn.transactionId);
+    if (txn.createdAt || txn.date) receiptData.date = txn.createdAt || txn.date;
+
+    if (typeNorm === 'withdrawal' || typeNorm.includes('withdrawal')) {
+      const { formatSignedAmount } = require('../utils/formatAmount');
+      receiptData.fields.push(
+        { label: 'Type', value: txn.type },
+        { label: 'Amount', value: formatSignedAmount(txn.amount, txn.type) },
+        { label: 'Transaction ID', value: transactionId, copyable: true },
+        { label: 'Date', value: new Date(txn.createdAt || txn.date || Date.now()).toLocaleString() || 'N/A' },
+        { label: 'Status', value: txn.status || 'N/A' }
+      );
+      // include fee and total debited if available on txn
+      if (txn.fee !== undefined && txn.fee !== null && Number(txn.fee) !== 0) {
+        receiptData.fields.push({ label: 'Fee', value: `₦${Number(txn.fee).toLocaleString()}` });
+        try {
+          const total = (Number(txn.amount || 0) + Number(txn.fee || 0));
+          receiptData.fields.push({ label: 'Total Debited', value: `₦${total.toLocaleString()}` });
+        } catch (e) { /* ignore */ }
+      }
+      const bankLabel = txn.bankMeta || (txn.bank && (txn.bank.bankName ? `${txn.bank.bankName} - ${txn.bank.accountNumber}` : JSON.stringify(txn.bank))) || txn.bankId || null;
+      if (bankLabel) receiptData.fields.push({ label: 'Bank', value: bankLabel });
+      const acctName = txn.accountName || txn.accountHolderName || (txn.bank && (txn.bank.accountName || txn.bank.accountHolderName));
+      if (acctName) receiptData.fields.push({ label: 'Account Name', value: acctName });
+      if (txn.note) receiptData.fields.push({ label: 'Note', value: txn.note });
+      // include provider info if available
+      if (txn.provider && txn.provider.reference) receiptData.fields.push({ label: 'Reference', value: txn.provider.reference });
+      // include any admin-uploaded receipt files
+      if (txn.adminReceipts && Array.isArray(txn.adminReceipts) && txn.adminReceipts.length) {
+        try {
+          const extras: any = (Constants.expoConfig && (Constants.expoConfig as any).extra) || {};
+          const configured = (extras.apiUrl || extras.API_URL || extras.apiUrl) || '';
+          const base = String(configured).replace(/\/$/, '');
+          const mapped = txn.adminReceipts.map((p: string) => {
+            if (!p) return p;
+            if (/^https?:\/\//i.test(p)) return p;
+            if (p.startsWith('/')) return `${base}${p}`;
+            return `${base}/${p}`;
+          }).filter(Boolean);
+          if (mapped.length) receiptData.fields.push({ label: 'Receipt File', value: mapped });
+        } catch (e) {
+          receiptData.fields.push({ label: 'Receipt File', value: txn.adminReceipts });
+        }
+      }
+      if (txn.status && txn.status.toLowerCase() === 'rejected') receiptData.fields.push({ label: 'Rejection Reason', value: txn.rejectionReason || 'No reason provided' });
+      // attach profile header
+      receiptData.header = receiptData.header || {};
+      if (profile?.username) receiptData.header.username = profile.username;
+      if (profile?.email) receiptData.header.email = profile.email;
+      return navigation.navigate('Receipt' as any, { receiptData } as any);
+    }
+
+    if (txn.type === 'Sent Transfer' || txn.type === 'Received Transfer') {
+      const isSent = txn.type === 'Sent Transfer';
+      receiptData.fields.push(
+        { label: 'Type', value: txn.type },
+        { label: 'Amount', value: require('../utils/formatAmount').formatSignedAmount(txn.amount, txn.type) },
+        { label: 'Transaction ID', value: transactionId, copyable: true },
+        { label: 'Date', value: new Date(txn.createdAt || txn.date || Date.now()).toLocaleString() || 'N/A' },
+        { label: 'Status', value: txn.status || 'N/A' },
+        { label: isSent ? 'Sent To' : 'Received From', value: txn.payId || txn.recipientId?.payId || txn.counterparty?.payId || 'N/A' },
+        { label: 'Note', value: txn.note || 'No additional notes.' }
+      );
+      if (txn.status === 'Rejected') receiptData.fields.push({ label: 'Rejection Reason', value: txn.rejectionReason || 'No reason provided' });
+      // attach profile header
+      receiptData.header = receiptData.header || {};
+      if (profile?.username) receiptData.header.username = profile.username;
+      if (profile?.email) receiptData.header.email = profile.email;
+      return navigation.navigate('Receipt' as any, { receiptData } as any);
+    }
+
+    if (txn.type === 'Funding') {
+      receiptData.fields.push(
+        { label: 'Type', value: txn.type },
+        { label: 'Amount', value: require('../utils/formatAmount').formatSignedAmount(txn.amount, txn.type) },
+        { label: 'Transaction ID', value: transactionId, copyable: true },
+        { label: 'Date', value: new Date(txn.createdAt || txn.date || Date.now()).toLocaleString() || 'N/A' },
+        { label: 'Status', value: txn.status || 'N/A' },
+        { label: 'Note', value: txn.note || 'No additional notes.' }
+      );
+      // attach profile header
+      receiptData.header = receiptData.header || {};
+      if (profile?.username) receiptData.header.username = profile.username;
+      if (profile?.email) receiptData.header.email = profile.email;
+      return navigation.navigate('Receipt' as any, { receiptData } as any);
+    }
+
+    if (txn.type?.trim().toLowerCase() === 'trade confirmation' || txn.type?.trim().toLowerCase() === 'confirmation') {
+      try {
+        const { buildConfirmationReceipt } = require('../utils/receiptBuilders');
+        const built = buildConfirmationReceipt(txn);
+        // attach profile header when available
+        const profile = await getProfile().catch(() => null);
+        built.header = built.header || {};
+        if (profile?.username) built.header.username = profile.username;
+        if (profile?.email) built.header.email = profile.email;
+        return navigation.navigate('Receipt' as any, { receiptData: built } as any);
+      } catch (e) {
+        // fallback to previous inline behavior if builder fails - but prefer explicit labels
+        const fileUrls = Array.isArray(txn.fileUrls) && txn.fileUrls.length > 0 ? txn.fileUrls : txn.fileUrl ? [txn.fileUrl] : [];
+        receiptData.fields.push(
+          { label: 'Type', value: txn.type },
+          ...(txn.amount !== undefined && txn.amount !== null ? [{ label: 'Amount', value: require('../utils/formatAmount').formatSignedAmount(txn.amount, txn.type) }] : []),
+          { label: 'Service', value: txn.serviceName || 'N/A' },
+          { label: 'Service Tag', value: txn.serviceTag || 'N/A' },
+          { label: 'Transaction ID', value: transactionId, copyable: true },
+          { label: 'Date', value: new Date(txn.createdAt || txn.date || Date.now()).toLocaleString() || 'N/A' },
+          { label: 'Status', value: txn.status || 'N/A' },
+          { label: 'Note', value: txn.note || 'No additional notes.' },
+          { label: 'Files', value: fileUrls.length > 0 ? fileUrls : [] }
+        );
+        if (txn.status === 'Funded') {
+          try {
+            const userAmt = txn.userAmountInForeignCurrency ?? null;
+            const userCurr = (txn.userSelectedCurrency || txn.selectedCurrency || '').toUpperCase();
+            const adminAmt = txn.adminForeignAmount ?? txn.amountInForeignCurrency ?? null;
+            const adminCurr = (txn.adminSelectedCurrency || txn.selectedCurrency || '').toUpperCase();
+            if (userAmt) receiptData.fields.push({ label: `Amount input in ${userCurr || 'Foreign Currency'}`, value: `${userAmt.toLocaleString()} ${userCurr}` });
+            if (adminAmt) receiptData.fields.push({ label: `Amount funded in ${adminCurr || 'Foreign Currency'}`, value: `${adminAmt.toLocaleString()} ${adminCurr}` });
+            if (txn.amountInNaira) receiptData.fields.push({ label: 'Amount in Naira', value: `₦${txn.amountInNaira.toLocaleString()}` });
+            if (txn.exchangeRateUsed) receiptData.fields.push({ label: 'Exchange Rate', value: txn.exchangeRateUsed.toLocaleString() });
+          } catch (ee) {
+            receiptData.fields.push({ label: `Amount in ${txn.selectedCurrency?.toUpperCase() ?? 'Foreign Currency'}`, value: txn.amountInForeignCurrency ? `${txn.amountInForeignCurrency.toLocaleString()} ${txn.selectedCurrency?.toUpperCase()}` : 'N/A' }, { label: 'Exchange Rate', value: txn.exchangeRateUsed ? txn.exchangeRateUsed.toLocaleString() : 'N/A' }, { label: 'Amount in Naira', value: txn.amountInNaira ? `₦${txn.amountInNaira.toLocaleString()}` : 'N/A' });
+          }
+        }
+        if (txn.status === 'Rejected') receiptData.fields.push({ label: 'Rejection Reason', value: txn.rejectionReason || 'No reason provided' });
+        return navigation.navigate('Receipt' as any, { receiptData } as any);
+      }
+    }
+  };
+
+  const renderItem = ({ item }: { item: any }) => (
+    <TransactionItem
+      txn={item}
+      onPress={handleViewReceipt}
+      isBalanceVisible={walletBalance !== null}
+      countdown={countdowns[item._id]}
+    />
+  );
+
+  return (
+    <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+      {/* Wrapper ScrollView to allow pull-to-refresh on the whole screen */}
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />
+        }
+      >
+        {/* TOP BAR: Dashboard Branding & Quick Utilities */}
+        <View style={styles.topBar}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {/* Profile Circle with Initials */}
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Profile')}
+              style={styles.profileCircle}
+            >
+              <Text style={styles.profileInitials}>
+                {(() => {
+                  // 1. Get the full name string
+                  const name = profile?.name || profile?.fullName || profile?.username || '';
+                  if (!name) return 'U';
+
+                  // 2. Split by spaces and filter out empty strings
+                  const parts = name.trim().split(/\s+/);
+
+                  if (parts.length >= 2) {
+                    // Return first letter of first and last name
+                    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+                  }
+
+                  // 3. Fallback for single names: take first two letters
+                  return name.substring(0, 2).toUpperCase();
+                })()}
+              </Text>
+            </TouchableOpacity>
+
+            <View style={{ marginLeft: 12 }}>
+              <Text style={styles.welcomeSub}>Welcome back,</Text>
+              <Text style={styles.welcome}>{profile?.username || 'User'}</Text>
+            </View>
+          </View>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TouchableOpacity onPress={() => navigation.navigate('Notifications' as any)} style={{ marginRight: 15 }}>
+              <View style={{ position: 'relative' }}>
+                <Ionicons name="notifications-outline" size={24} color={theme.colors.text} />
+                {unreadCount > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{formatBadgeCount(unreadCount)}</Text>
+                  </View>
+                )}
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Earn' as any)}
+              style={styles.earnPill}
+            >
+              <Text style={styles.earnText}>Earn ₦2k</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+        {/* STEP 1: SERVICE SELECTION & BALANCE */}
+        <View style={styles.servicesBox}>
+          <TouchableOpacity
+            style={styles.selectorButton}
+            onPress={() => setShowModal(true)}
+            activeOpacity={0.8}
+          >
+            {/* Left: icon + label (label allowed to shrink) */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
+              <Ionicons name="apps-outline" size={18} color={theme.colors.primary} style={{ marginRight: 10 }} />
+              <Text style={[styles.selectorText, { flex: 1 }]} numberOfLines={1} ellipsizeMode="tail">
+                {selectedServiceLabel || 'Select a Service to Start'}
+              </Text>
+            </View>
+            {/* Right: fixed chevron */}
+            <Ionicons name="chevron-down-outline" size={18} color={theme.colors.muted} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.balanceCard} activeOpacity={0.9} onPress={async () => {
+            const next = !balanceVisible;
+            setBalanceVisible(next);
+            await AsyncStorage.setItem('balanceVisible', next ? 'true' : 'false');
+          }}>
+            <Text style={styles.balanceLabel}>Total Wallet Balance</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={styles.balanceValue}>
+                {walletBalance !== null ? (balanceVisible ? `₦${walletBalance.toLocaleString()}` : '₦ ••••••') : '₦ ---'}
+              </Text>
+              <Ionicons name={balanceVisible ? 'eye-outline' : 'eye-off-outline'} size={22} color={theme.colors.primary} />
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        {/* STEP 2: MAIN ACTIONS (Joined Pre-submissions here) */}
+        <View style={styles.actionsRow}>
+          <ActionButton
+            onPress={() => {
+              if (!selectedService) return showToast('Please select a service first.');
+              navigation.navigate('GetTag' as any, { serviceName: selectedService });
+            }}
+            icon={<Ionicons name="qr-code-outline" size={22} color="#FFF" />}
+            label="Get Tag"
+          />
+
+          <ActionButton
+            onPress={() => navigation.navigate('MyPreSubmissions' as any)}
+            icon={<Ionicons name="pricetags-outline" size={22} color="#FFF" />}
+            label="My Pre-subs"
+          />
+
+          <ActionButton
+            onPress={() => {
+              if (!selectedService) return showToast('Please select a service first.');
+              navigation.navigate('TradeConfirmation' as any, { serviceName: selectedService });
+            }}
+            icon={<Ionicons name="shield-checkmark-outline" size={22} color="#FFF" />}
+            label="Confirm"
+          />
+
+          <ActionButton
+            onPress={() => navigation.navigate('Withdrawal' as any)}
+            icon={<Ionicons name="paper-plane-outline" size={22} color="#FFF" />}
+            label="Withdraw"
+          />
+        </View>
+
+        {/* STEP 3: ANALYTICS & ADS */}
+  <BalanceSparkline walletBalance={walletBalance} transactions={transactions} metric={'weeklyNet'} />
+        <Flyer requireSparkline={true} />
+
+        {/* STEP 4: RECENT TRANSACTIONS */}
+        <View style={{ marginTop: 20 }}>
+          <View style={styles.txnHeader}>
+            <Text style={styles.sectionTitle}>Recent Transactions</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('History' as any)}>
+              <Text style={styles.seeAll}>View All</Text>
+            </TouchableOpacity>
+          </View>
+
+          {loading ? (
+            <View style={{ marginTop: 10 }}>
+              {[1, 2, 3].map((i) => (
+                <View key={i} style={{ marginBottom: 10 }}>
+                  <SkeletonBox height={70} width={'100%'} radius={12} />
+                </View>
+              ))}
+            </View>
+          ) : transactions.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="receipt-outline" size={40} color={theme.colors.mutedLight} />
+              <Text style={styles.emptyText}>No transactions yet. Start your trading journey — select a service and make your first transaction.</Text>
+            </View>
+          ) : (
+            // Note: Inside ScrollView, FlatList needs scrollEnabled={false} or use .map()
+            transactions.slice(0, 5).map((item) => (
+              <TransactionItem
+                key={item._id || item.time}
+                txn={item}
+                onPress={() => handleViewReceipt(item)}
+              />
+            ))
+          )}
+        </View>
+      </ScrollView>
+
+      {/* FLOATING CALCULATOR */}
+      <TouchableOpacity
+        style={[styles.fabCalculator, { bottom: 100 }]}
+        onPress={() => {
+          if (!selectedService) return showToast('Please select a service first.');
+          navigation.navigate('Calculator', { serviceName: selectedService });
+        }}
+      >
+        <Ionicons name="calculator" size={26} color="#FFF" />
+      </TouchableOpacity>
+
+      <ServicePickerModal
+        visible={showModal}
+        onClose={() => setShowModal(false)}
+        onSelect={(s: any) => {
+          const name = typeof s === 'string' ? s : (s.name || s._id || '');
+          const label = typeof s === 'string' ? '' : ((s.label || s.name || '') + (s.isNew ? ' (NEW)' : ''));
+          setSelectedService(name);
+          setSelectedServiceLabel(label);
+          AsyncStorage.setItem('defaultService', name);
+          setShowModal(false);
+        }}
+      />
+
+      <NavBar
+        active={activeTab}
+        onPress={(tab) => {
+          try {
+            setActiveTab(tab as any);
+            // map the tab names to actual route names used in the app
+            const routeMap: Record<string, string> = {
+              Home: 'Dashboard',
+              History: 'History',
+              Profile: 'Profile',
+              Help: 'Help',
+            };
+            const routeName = routeMap[tab as string] || (tab as string);
+            navigation.navigate(routeName as any);
+          } catch (e) {
+            console.warn('NavBar navigation error', e);
+          }
+        }}
+      />
+    </View>
+  );
+};
+const createStyles = (t: any) => StyleSheet.create({
+  topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  profileCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: t.colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: t.colors.surface,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+  },
+  profileInitials: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  welcomeSub: {
+    fontSize: 12,
+    color: t.colors.muted,
+    marginBottom: -2,
+  },
+  welcome: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: t.colors.text,
+  },
+  earnPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#1DBF73', // Using the success green
+    borderRadius: 20,
+  },
+  earnText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 12,
+  },
+  balanceCard: { backgroundColor: t.colors.surface, padding: 18, borderRadius: 14, marginBottom: 14, shadowColor: '#000', shadowOpacity: 0.04, shadowOffset: { width: 0, height: 3 }, shadowRadius: 8, elevation: 3 },
+  balanceLabel: { color: t.colors.muted, fontSize: 14, fontWeight: '600' },
+  balanceValue: { fontSize: 28, fontWeight: '900', color: t.colors.primary, marginTop: 8 },
+  actionsRow: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: 8 },
+  actionBtn: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', marginHorizontal: 10 },
+  actionWrap: { alignItems: 'center', width: 90 },
+  actionLabel: { fontSize: 12, color: t.colors.text, marginTop: 6, textAlign: 'center' },
+  actionText: { color: t.colors.white, marginLeft: 8, fontWeight: '700' },
+  txnHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  txnListContainer: { /* allow list to grow, avoid artificially clipping */ flex: 1 },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: t.colors.text },
+  seeAll: { color: t.colors.primary },
+  fabCalculator: { position: 'absolute', right: 20, bottom: 88, backgroundColor: t.colors.primary, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 8 },
+  servicesBox: { marginBottom: 12, marginTop: 12 },
+  selectorButton: { width: '100%', backgroundColor: t.colors.surface, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, marginBottom: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: t.colors.border },
+  selectorText: { color: t.colors.text, fontWeight: '700', flexShrink: 1 },
+  secondaryActions: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+  earnBtn: { flex: 1, marginRight: 8, paddingVertical: 10, borderRadius: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', backgroundColor: '#1DBF73' },
+  contactBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', backgroundColor: '#25D366' },
+  tradeBtn: { flexGrow: 1.6, minWidth: 110 },
+  getTagBtn: { minWidth: 84 },
+  withdrawBtn: { minWidth: 84 },
+  bottomBar: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 64, borderTopWidth: 1, borderTopColor: t.colors.border, backgroundColor: t.colors.surface, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', elevation: 10, shadowColor: '#000', shadowOpacity: 0.06, shadowOffset: { width: 0, height: -2 }, shadowRadius: 8, paddingBottom: 8 },
+  bottomBarItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 6 },
+  bottomBarLabel: { fontSize: 12, color: '#333', marginTop: 4 },
+  activeBarItem: { backgroundColor: t.colors.surface, borderRadius: 8, marginHorizontal: 8, paddingVertical: 6 },
+  activeLabel: { color: t.colors.primary, fontWeight: '700' },
+  badge: { position: 'absolute', right: -8, top: -8, backgroundColor: t.colors.error, borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1 },
+  badgeText: { color: t.colors.white, fontSize: 10, fontWeight: '700' },
+  // screenHeader and screenHeaderText removed — header intentionally disabled
+  modalContainer: { flex: 1, backgroundColor: t.colors.surface },
+  modalList: { flex: 1, padding: 16 },
+  modalEmpty: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  notifItem: { padding: 12, borderRadius: 10, borderWidth: 1, borderColor: t.colors.border },
+  notifRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  notifMessage: { color: t.colors.text, fontSize: 14 },
+  notifTime: { color: t.colors.mutedLight, marginTop: 6, fontSize: 12 },
+  modalHeaderRightButton: { backgroundColor: t.colors.primary, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  markBtn: { backgroundColor: t.colors.primary, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  markBtnText: { color: t.colors.white, fontWeight: '700', fontSize: 12 },
+  flyerSlot: { paddingHorizontal: 16, marginTop: 12, marginBottom: 12 },
+  flyerCard: { backgroundColor: t.colors.surface, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: t.colors.border || '#eee' },
+  emptyState: { marginTop: 20, alignItems: 'center', justifyContent: 'center' },
+  emptyText: { color: t.colors.muted || '#666', fontSize: 15 },
+});
+
+// generate styles from runtime theme
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const useStyles = (theme: any) => useMemo(() => createStyles(theme), [theme]);
+
+// export default at EOF (below)
+export default DashboardScreen;
+
+

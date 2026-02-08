@@ -1,0 +1,2 @@
+This patch has been moved to disabled because `react-native-country-picker-modal` is not installed in node_modules.
+If you need this patch in the future, restore it under `patches/` with the original filename.

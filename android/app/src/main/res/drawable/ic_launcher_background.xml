@@ -1,0 +1,7 @@
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Native splash now intentionally uses only a background color.
+       The JS overlay (AnimatedLogo) will render the logo and animation so
+       the native drawable must not include the same bitmap to avoid a
+       duplicate logo flash. -->
+  <item android:drawable="@color/splashscreen_background"/>
+</layer-list>

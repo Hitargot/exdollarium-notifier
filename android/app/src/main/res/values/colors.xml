@@ -1,0 +1,7 @@
+<resources>
+  <color name="splashscreen_background">#162660</color>
+  <color name="colorPrimary">#023c69</color>
+  <color name="colorPrimaryDark">#ffffff</color>
+  <!-- Default notification color used by Firebase/Expo notifications -->
+  <color name="notification_icon_color">#162660</color>
+</resources>

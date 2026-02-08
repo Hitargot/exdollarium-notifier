@@ -1,0 +1,50 @@
+{
+  "cli": {
+    "version": ">= 3.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "APP_VARIANT": "development"
+      },
+      "android": {
+        "releaseChannel": "development",
+        "buildType": "apk",
+        "env": {
+          "EXPO_USE_HERMES": "1",
+          "KOTLIN_VERSION": "1.9.25"
+        }
+      },
+      "ios": {
+        "releaseChannel": "development",
+        "buildConfiguration": "Debug"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "releaseChannel": "preview"
+      },
+      "env": {
+        "APP_VARIANT": "preview"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "android": {
+        "releaseChannel": "production"
+      },
+      "env": {
+        "APP_VARIANT": "production",
+        "API_URL": "https://exdollarium-6f0f5aab6a7d.herokuapp.com",
+        "ENV": "production"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

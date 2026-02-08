@@ -1,0 +1,4 @@
+<resources>
+	<!-- Night mode fallback for notification color -->
+	<color name="notification_icon_color">#162660</color>
+</resources>
