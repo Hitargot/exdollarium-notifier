@@ -10,6 +10,7 @@ import { useTheme } from '../theme/index';
 import staticTheme from '../styles/theme';
 import authLock from '../utils/authLock';
 import authStorage from '../utils/authStorage';
+import clearLocalData from '../utils/clearLocalData';
 import { signalPasscodeReady } from '../utils/splashController';
 import { showInAppConfirm } from '../contexts/ConfirmContext';
 import PinPad from '../components/PinPad';
@@ -84,8 +85,8 @@ const PasscodeUnlockScreen: React.FC = () => {
     });
 
     if (ok) {
-      await authLock.clearPasscode(); // Removes the PIN requirement
-      await authStorage.removeToken(); // Invalidates session
+      // Clear all local data before forcing a re-login
+      await clearLocalData().catch(() => null);
       navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
     }
   };
@@ -166,7 +167,12 @@ const PasscodeUnlockScreen: React.FC = () => {
           <TouchableOpacity onPress={handleForgotPasscode}>
             <Text style={styles.footerLink}>Forgot passcode?</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+          <TouchableOpacity onPress={async () => {
+            // When switching accounts we must remove any local data to avoid
+            // leaking another user's cached state onto the next login.
+            await clearLocalData().catch(() => null);
+            navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+          }}>
             <Text style={[styles.footerLink, { color: tColors.error }]}>Switch Account</Text>
           </TouchableOpacity>
         </View>

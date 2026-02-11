@@ -27,7 +27,7 @@ import { getWalletData, getConfirmations, getTransactions, getProfile, getPreSub
 import { sanitizeReceipt } from '../utils/receiptSanitizer';
 import { showToast } from '../utils/toast';
 import { getLastLoadedAt, setLastLoadedAt, getCachedTransactions, setCachedTransactions } from '../utils/transactionCache';
-import { set as simpleCacheSet, setLastLoadedAt as simpleCacheSetLastLoadedAt, setFetching as simpleCacheSetFetching, isFetching as simpleCacheIsFetching } from '../utils/simpleCache';
+import { set as simpleCacheSet, setLastLoadedAt as simpleCacheSetLastLoadedAt, setFetching as simpleCacheSetFetching, isFetching as simpleCacheIsFetching, getLastLoadedAt as simpleCacheGetLastLoadedAt } from '../utils/simpleCache';
 // Modal removed: notifications now live in a dedicated Notifications screen
 import staticTheme from '../styles/theme';
 import { useTheme } from '../theme/index';
@@ -73,6 +73,11 @@ const DashboardScreen = () => {
   const [showModal, setShowModal] = useState(false);
   // track current user profile so UI can reference profile?.username safely
   const [profile, setProfile] = useState<any | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState<boolean>(true);
+  const [loadingWallet, setLoadingWallet] = useState<boolean>(true);
+  const [loadingTxns, setLoadingTxns] = useState<boolean>(() => {
+    try { const cached = getCachedTransactions(); return !(cached && cached.length); } catch (e) { return true; }
+  });
 
   const countdownInterval = useRef<number | null>(null);
   const [activeTab, setActiveTab] = useState<'Home' | 'History' | 'Profile' | 'Help'>('Home');
@@ -305,48 +310,47 @@ const DashboardScreen = () => {
     const cachedBefore = getCachedTransactions();
     if (cachedBefore && cachedBefore.length) {
       setTransactions(cachedBefore);
-      // avoid showing full-screen skeleton when cached exists
-    } else {
-      setLoading(true);
+      setLoadingTxns(false);
     }
     console.debug('[Dashboard] loadData start - cachedBefore length =', cachedBefore ? cachedBefore.length : 0);
 
     try {
       const token = await authStorage.getToken();
-      const [profileRes, walletRes, txRes, confRes] = await Promise.all([
-        getProfile().catch(() => null),
-        getWalletData().catch(() => ({ transactions: [], balance: 0 })),
-        getTransactions().catch(() => ({ transactions: [] })),
-        getConfirmations().catch(() => ({ confirmations: [] })),
-      ]);
 
-      const userId = profileRes?._id;
-      // persist fetched profile to local state so UI can reference it
-      try { setProfile(profileRes || null); } catch (e) { /* ignore */ }
-      const walletBalanceVal = walletRes?.balance ?? walletRes?.data?.balance ?? 0;
-      setWalletBalance(walletBalanceVal);
+      // Fetch resources independently so the UI can render each section as it becomes available
+      // 1) Profile
+      getProfile().then((profileRes) => {
+        try { setProfile(profileRes || null); } catch (e) { /* ignore */ }
+      }).catch(() => { /* ignore profile fetch failures */ }).finally(() => { setLoadingProfile(false); });
 
-      const walletTxns = walletRes?.transactions || walletRes?.data?.transactions || [];
-      const apiTxns = txRes?.transactions || txRes?.data?.transactions || [];
-      const confs = confRes?.confirmations || confRes?.data?.confirmations || [];
+      // 2) Wallet (balance + wallet transactions)
+      getWalletData().then((walletRes) => {
+        try {
+          const walletBalanceVal = walletRes?.balance ?? walletRes?.data?.balance ?? 0;
+          setWalletBalance(walletBalanceVal);
+        } catch (e) { /* ignore */ }
+      }).catch(() => { /* ignore wallet fetch */ }).finally(() => { setLoadingWallet(false); });
 
-      const combined = normalizeTxns(walletTxns, apiTxns, confs, userId).slice(0, 20);
-      setTransactions(combined);
-      // cache transactions and mark last loaded time so we can avoid refetching on quick navigations
-      try {
-        setCachedTransactions(combined);
-        setLastLoadedAt(Date.now());
-        // mirror to simpleCache so other screens (History) can see it
-        try { simpleCacheSet('transactions', combined); simpleCacheSetLastLoadedAt('transactions', Date.now()); } catch (_) { }
-        console.debug('[Dashboard] loadData finished - cached txns set, count =', combined.length);
-      } catch (e) {
-        // ignore cache set errors
-      }
+      // 3) Transactions and confirmations: combine then set once available
+      Promise.all([getTransactions().catch(() => ({ transactions: [] })), getConfirmations().catch(() => ({ confirmations: [] }))])
+        .then(([txRes, confRes]) => {
+          try {
+            const walletTxns: any[] = []; // wallet-specific transactions excluded here (we fetch via getTransactions)
+            const apiTxns = txRes?.transactions || txRes?.data?.transactions || [];
+            const confs = confRes?.confirmations || confRes?.data?.confirmations || [];
+            const userId = undefined;
+            const combined = normalizeTxns(walletTxns, apiTxns, confs, userId).slice(0, 20);
+            setTransactions(combined);
+            try { setCachedTransactions(combined); setLastLoadedAt(Date.now()); simpleCacheSet('transactions', combined); simpleCacheSetLastLoadedAt('transactions', Date.now()); } catch (_) { }
+            console.debug('[Dashboard] txns+confs loaded, count =', combined.length);
+          } catch (e) { console.warn('Error processing txns/conf', e); }
+        }).catch((e) => { console.warn('Transactions/Confirmations load failed', e); })
+        .finally(() => { setLoadingTxns(false); try { simpleCacheSetFetching('transactions', false); } catch (_) {} });
+
     } catch (err) {
       console.warn('Dashboard load error', err);
+      setLoadingProfile(false); setLoadingWallet(false); setLoadingTxns(false);
     } finally {
-      try { simpleCacheSetFetching('transactions', false); } catch (e) { }
-      setLoading(false);
       setRefreshing(false);
       try { isFetchingRef.current = false; } catch (e) { /* ignore */ }
     }
@@ -444,9 +448,11 @@ const DashboardScreen = () => {
     useCallback(() => {
       // Only reload if we haven't loaded recently (TTL = 5 minutes)
       const TTL = 5 * 60 * 1000;
-      const last = getLastLoadedAt();
+      const lastTxnCache = getLastLoadedAt();
+      const lastSimple = simpleCacheGetLastLoadedAt('transactions');
+      const last = Math.max(Number(lastTxnCache || 0), Number(lastSimple || 0)) || null;
       const inflight = simpleCacheIsFetching('transactions');
-      console.debug('[Dashboard] onFocus - lastLoadedAt =', last, 'now - last =', last ? (Date.now() - last) : 'n/a', 'inflight =', inflight);
+      console.debug('[Dashboard] onFocus - lastLoadedAt(transactionCache) =', lastTxnCache, 'lastLoadedAt(simpleCache) =', lastSimple, 'combined =', last, 'now - last =', last ? (Date.now() - last) : 'n/a', 'inflight =', inflight);
       // If another screen is already fetching transactions, skip triggering another load.
       if (inflight) {
         console.debug('[Dashboard] onFocus -> skipping loadData() (fetch in-flight)');
@@ -471,9 +477,9 @@ const DashboardScreen = () => {
                     <View style={{ position: 'relative' }}>
                       <Ionicons name="notifications-outline" size={24} color={theme.colors.primary} />
                       {unreadCount > 0 && (
-                        <View style={{ position: 'absolute', right: -6, top: -6, backgroundColor: theme.colors.error, borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1 }}>
-                          <Text style={{ color: theme.colors.white, fontSize: 11, fontWeight: '700' }}>{unreadCount}</Text>
-                        </View>
+                                <View style={[styles.badge, { backgroundColor: theme.colors.error }]}> 
+                                  <Text style={styles.badgeText}>{formatBadgeCount(unreadCount)}</Text>
+                                </View>
                       )}
                     </View>
                   </TouchableOpacity>
@@ -481,8 +487,8 @@ const DashboardScreen = () => {
                     <View style={{ position: 'relative' }}>
                       <Ionicons name="pricetag-outline" size={24} color={theme.colors.primary} />
                       {c > 0 && (
-                        <View style={{ position: 'absolute', right: -6, top: -6, backgroundColor: theme.colors.error, borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1 }}>
-                          <Text style={{ color: theme.colors.white, fontSize: 11, fontWeight: '700' }}>{c}</Text>
+                        <View style={[styles.badge, { backgroundColor: theme.colors.error }]}>
+                          <Text style={styles.badgeText}>{formatBadgeCount(c)}</Text>
                         </View>
                       )}
                     </View>
@@ -515,18 +521,18 @@ const DashboardScreen = () => {
                     <View style={{ position: 'relative' }}>
                       <Ionicons name="notifications-outline" size={24} color={theme.colors.primary} />
                       {ucount > 0 && (
-                        <View style={{ position: 'absolute', right: -6, top: -6, backgroundColor: theme.colors.error, borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1 }}>
-                          <Text style={{ color: theme.colors.white, fontSize: 11, fontWeight: '700' }}>{ucount}</Text>
-                        </View>
-                      )}
+                            <View style={[styles.badge, { backgroundColor: theme.colors.error }]}>
+                              <Text style={styles.badgeText}>{formatBadgeCount(ucount)}</Text>
+                            </View>
+                          )}
                     </View>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => navigation.navigate('MyPreSubmissions' as any)}>
                     <View style={{ position: 'relative' }}>
                       <Ionicons name="pricetag-outline" size={24} color={theme.colors.primary} />
                       {preCount > 0 && (
-                        <View style={{ position: 'absolute', right: -6, top: -6, backgroundColor: theme.colors.error, borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1 }}>
-                          <Text style={{ color: theme.colors.white, fontSize: 11, fontWeight: '700' }}>{preCount}</Text>
+                        <View style={[styles.badge, { backgroundColor: theme.colors.error }]}>
+                          <Text style={styles.badgeText}>{formatBadgeCount(preCount)}</Text>
                         </View>
                       )}
                     </View>
@@ -556,8 +562,8 @@ const DashboardScreen = () => {
             <View style={{ position: 'relative' }}>
               <Ionicons name="notifications-outline" size={24} color={theme.colors.primary} />
               {unreadCount > 0 && (
-                <View style={{ position: 'absolute', right: -6, top: -6, backgroundColor: '#FF3B30', borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1 }}>
-                  <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{unreadCount}</Text>
+                <View style={[styles.badge, { backgroundColor: '#FF3B30' }]}>
+                  <Text style={styles.badgeText}>{formatBadgeCount(unreadCount)}</Text>
                 </View>
               )}
             </View>
@@ -566,8 +572,8 @@ const DashboardScreen = () => {
             <View style={{ position: 'relative' }}>
               <Ionicons name="pricetag-outline" size={24} color={theme.colors.primary} />
               {preCount > 0 && (
-                <View style={{ position: 'absolute', right: -6, top: -6, backgroundColor: '#FF3B30', borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1 }}>
-                  <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{preCount}</Text>
+                <View style={[styles.badge, { backgroundColor: '#FF3B30' }]}>
+                  <Text style={styles.badgeText}>{formatBadgeCount(preCount)}</Text>
                 </View>
               )}
             </View>
@@ -767,7 +773,7 @@ const DashboardScreen = () => {
     <TransactionItem
       txn={item}
       onPress={handleViewReceipt}
-      isBalanceVisible={walletBalance !== null}
+      isBalanceVisible={!loadingWallet && walletBalance !== null}
       countdown={countdowns[item._id]}
     />
   );
@@ -785,37 +791,43 @@ const DashboardScreen = () => {
         {/* TOP BAR: Dashboard Branding & Quick Utilities */}
         <View style={styles.topBar}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            {/* Profile Circle with Initials */}
-            <TouchableOpacity
-              onPress={() => navigation.navigate('Profile')}
-              style={styles.profileCircle}
-            >
-              <Text style={styles.profileInitials}>
-                {(() => {
-                  // 1. Get the full name string
-                  const name = profile?.name || profile?.fullName || profile?.username || '';
-                  if (!name) return 'U';
+            {loadingProfile ? (
+              // Left skeleton only; keep action icons visible on the right
+              <>
+                <SkeletonBox width={44} height={44} radius={44} />
+                <View style={{ marginLeft: 12 }}>
+                  <SkeletonBox width={160} height={18} radius={6} />
+                  <View style={{ height: 8 }} />
+                  <SkeletonBox width={100} height={14} radius={6} />
+                </View>
+              </>
+            ) : (
+              // Profile Circle with Initials and welcome text
+              <>
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('Profile')}
+                  style={styles.profileCircle}
+                >
+                  <Text style={styles.profileInitials}>
+                    {(() => {
+                      const name = profile?.name || profile?.fullName || profile?.username || '';
+                      if (!name) return 'U';
+                      const parts = name.trim().split(/\s+/);
+                      if (parts.length >= 2) return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+                      return name.substring(0, 2).toUpperCase();
+                    })()}
+                  </Text>
+                </TouchableOpacity>
 
-                  // 2. Split by spaces and filter out empty strings
-                  const parts = name.trim().split(/\s+/);
-
-                  if (parts.length >= 2) {
-                    // Return first letter of first and last name
-                    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-                  }
-
-                  // 3. Fallback for single names: take first two letters
-                  return name.substring(0, 2).toUpperCase();
-                })()}
-              </Text>
-            </TouchableOpacity>
-
-            <View style={{ marginLeft: 12 }}>
-              <Text style={styles.welcomeSub}>Welcome back,</Text>
-              <Text style={styles.welcome}>{profile?.username || 'User'}</Text>
-            </View>
+                <View style={{ marginLeft: 12 }}>
+                  <Text style={styles.welcomeSub}>Welcome back,</Text>
+                  <Text style={styles.welcome}>{profile?.username || 'User'}</Text>
+                </View>
+              </>
+            )}
           </View>
 
+          {/* Right-side controls should always render (notifications bell + Earn pill) */}
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <TouchableOpacity onPress={() => navigation.navigate('Notifications' as any)} style={{ marginRight: 15 }}>
               <View style={{ position: 'relative' }}>
@@ -862,7 +874,11 @@ const DashboardScreen = () => {
             <Text style={styles.balanceLabel}>Total Wallet Balance</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <Text style={styles.balanceValue}>
-                {walletBalance !== null ? (balanceVisible ? `₦${walletBalance.toLocaleString()}` : '₦ ••••••') : '₦ ---'}
+                {loadingWallet ? (
+                  <SkeletonBox width={120} height={24} radius={8} />
+                ) : (
+                  (walletBalance !== null ? (balanceVisible ? `₦${walletBalance.toLocaleString()}` : '₦ ••••••') : '₦ ---')
+                )}
               </Text>
               <Ionicons name={balanceVisible ? 'eye-outline' : 'eye-off-outline'} size={22} color={theme.colors.primary} />
             </View>
@@ -903,7 +919,12 @@ const DashboardScreen = () => {
         </View>
 
         {/* STEP 3: ANALYTICS & ADS */}
-  <BalanceSparkline walletBalance={walletBalance} transactions={transactions} metric={'weeklyNet'} />
+  <BalanceSparkline
+    walletBalance={walletBalance}
+    transactions={transactions}
+    metric={'weeklyNet'}
+    isBalanceVisible={!loadingWallet && walletBalance !== null}
+  />
         <Flyer requireSparkline={true} />
 
         {/* STEP 4: RECENT TRANSACTIONS */}
@@ -915,7 +936,7 @@ const DashboardScreen = () => {
             </TouchableOpacity>
           </View>
 
-          {loading ? (
+          {loadingTxns ? (
             <View style={{ marginTop: 10 }}>
               {[1, 2, 3].map((i) => (
                 <View key={i} style={{ marginBottom: 10 }}>
@@ -1058,8 +1079,8 @@ const createStyles = (t: any) => StyleSheet.create({
   bottomBarLabel: { fontSize: 12, color: '#333', marginTop: 4 },
   activeBarItem: { backgroundColor: t.colors.surface, borderRadius: 8, marginHorizontal: 8, paddingVertical: 6 },
   activeLabel: { color: t.colors.primary, fontWeight: '700' },
-  badge: { position: 'absolute', right: -8, top: -8, backgroundColor: t.colors.error, borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1 },
-  badgeText: { color: t.colors.white, fontSize: 10, fontWeight: '700' },
+  badge: { position: 'absolute', right: -6, top: -6, backgroundColor: t.colors.error, borderRadius: 10, minWidth: 28, height: 20, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  badgeText: { color: t.colors.white, fontSize: 11, fontWeight: '800', textAlign: 'center', lineHeight: 20 },
   // screenHeader and screenHeaderText removed — header intentionally disabled
   modalContainer: { flex: 1, backgroundColor: t.colors.surface },
   modalList: { flex: 1, padding: 16 },

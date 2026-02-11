@@ -15,6 +15,7 @@ type Props = {
   defaultExpanded?: boolean;
   metric?: string;
   showValue?: boolean;
+  isBalanceVisible?: boolean;
 };
 
 // We'll compute bucket count based on selected timeframe (7, 30, or 90 days aggregated)
@@ -25,7 +26,8 @@ const BalanceSparkline: React.FC<Props> = ({
   transactions = [], 
   collapsible = false, 
   defaultExpanded = true,
-  showValue = false
+  showValue = false,
+  isBalanceVisible = true,
 }) => {
   const [selected, setSelected] = useState<number | null>(null);
   const [expanded, setExpanded] = useState<boolean>(defaultExpanded);
@@ -72,14 +74,7 @@ const BalanceSparkline: React.FC<Props> = ({
         return time >= startOfDay && time <= endOfDay;
       });
 
-      const funded = items
-        .filter(t => (t.type || '').toLowerCase().includes('fund'))
-        .reduce((s, t) => s + Math.abs(Number(t.amount || 0)), 0);
-
-      const withdrawals = items
-        .filter(t => (t.type || '').toLowerCase().includes('withdrawal'))
-        .reduce((s, t) => s + Math.abs(Number(t.amount || 0)), 0);
-
+      // Compute inflows and outflows more robustly so received transfers show as "In"
       const net = items.reduce((s, t) => {
         const type = (t.type || '').toLowerCase();
         const amt = Math.abs(Number(t.amount || 0));
@@ -87,11 +82,25 @@ const BalanceSparkline: React.FC<Props> = ({
         return s + (isOut ? -amt : amt);
       }, 0);
 
-      return { date: dayDate, funded, withdrawals, net };
+      const inflow = items
+        .filter((t) => {
+          const type = (t.type || '').toLowerCase();
+          return type.includes('fund') || type.includes('received') || type.includes('inbound') || type.includes('credit');
+        })
+        .reduce((s, t) => s + Math.abs(Number(t.amount || 0)), 0);
+
+      const outflow = items
+        .filter((t) => {
+          const type = (t.type || '').toLowerCase();
+          return type.includes('withdrawal') || type.includes('sent') || type.includes('debit');
+        })
+        .reduce((s, t) => s + Math.abs(Number(t.amount || 0)), 0);
+
+      return { date: dayDate, in: inflow, out: outflow, net };
     });
 
     if (agg <= 1) {
-      return rawDays.map(d => ({ label: d.date.toLocaleDateString(undefined, { weekday: 'short' }), funded: d.funded, withdrawals: d.withdrawals, net: d.net }));
+      return rawDays.map((d) => ({ label: d.date.toLocaleDateString(undefined, { weekday: 'short' }), in: d.in, out: d.out, net: d.net }));
     }
 
     // aggregate into groups of `agg` days (for 90 days aggregated weekly)
@@ -99,23 +108,23 @@ const BalanceSparkline: React.FC<Props> = ({
     for (let i = 0; i < rawDays.length; i += agg) {
       const slice = rawDays.slice(i, i + agg);
       const label = `W${Math.floor(i / agg) + 1}`;
-      const funded = slice.reduce((s, x) => s + x.funded, 0);
-      const withdrawals = slice.reduce((s, x) => s + x.withdrawals, 0);
-      const net = slice.reduce((s, x) => s + x.net, 0);
-      groups.push({ label, funded, withdrawals, net });
+      const inflow = slice.reduce((s, x) => s + (x.in || 0), 0);
+      const outflow = slice.reduce((s, x) => s + (x.out || 0), 0);
+      const net = slice.reduce((s, x) => s + (x.net || 0), 0);
+      groups.push({ label, in: inflow, out: outflow, net });
     }
     return groups;
   }, [transactions, timeframe]);
 
   const maxActivity = useMemo(() => {
-    const vals = buckets.map(b => Math.max(Math.abs(b.net), b.funded, b.withdrawals));
+    const vals = buckets.map((b) => Math.max(Math.abs(b.net), b.in || 0, b.out || 0));
     return Math.max(...vals, 1);
   }, [buckets]);
 
   // Weekly totals: total inflows and total outflows across the buckets
   const weeklyTotals = useMemo(() => {
-    const totalIn = buckets.reduce((s, b) => s + (b.funded || 0), 0);
-    const totalOut = buckets.reduce((s, b) => s + (b.withdrawals || 0), 0);
+    const totalIn = buckets.reduce((s, b) => s + (Number(b.in || 0)), 0);
+    const totalOut = buckets.reduce((s, b) => s + (Number(b.out || 0)), 0);
     return { totalIn, totalOut };
   }, [buckets]);
 
@@ -147,7 +156,7 @@ const BalanceSparkline: React.FC<Props> = ({
 
           {currentSelection ? (
             <Text style={[styles.mainValue, { color: tColors.text }]}>
-              {`₦${Math.abs(currentSelection.net).toLocaleString()}`}
+              {isBalanceVisible ? `₦${Math.abs(currentSelection.net).toLocaleString()}` : '₦ ••••••'}
               <Text style={{ color: (currentSelection?.net ?? 0) >= 0 ? tColors.success : tColors.error, fontSize: 16 }}>
                 {(currentSelection?.net ?? 0) >= 0 ? ' ↑' : ' ↓'}
               </Text>
@@ -156,11 +165,11 @@ const BalanceSparkline: React.FC<Props> = ({
             <View style={styles.totalsRow}>
               <View style={styles.totalItem}>
                 <Text style={[styles.totalLabel, { color: tColors.muted }]}>In</Text>
-                <Text style={[styles.totalAmount, { color: tColors.success }]}>₦{weeklyTotals.totalIn.toLocaleString()}</Text>
+                <Text style={[styles.totalAmount, { color: tColors.success }]}>{isBalanceVisible ? `₦${weeklyTotals.totalIn.toLocaleString()}` : '₦ ••••••'}</Text>
               </View>
               <View style={styles.totalItem}>
                 <Text style={[styles.totalLabel, { color: tColors.muted }]}>Out</Text>
-                <Text style={[styles.totalAmount, { color: tColors.error }]}>₦{weeklyTotals.totalOut.toLocaleString()}</Text>
+                <Text style={[styles.totalAmount, { color: tColors.error }]}>{isBalanceVisible ? `₦${weeklyTotals.totalOut.toLocaleString()}` : '₦ ••••••'}</Text>
               </View>
             </View>
           )}
@@ -258,11 +267,11 @@ const BalanceSparkline: React.FC<Props> = ({
         <Animated.View style={styles.detailsRow}>
           <View style={styles.detailItem}>
             <View style={[styles.dot, { backgroundColor: tColors.success }]} />
-            <Text style={[styles.detailText, { color: tColors.success }]}>In: ₦{currentSelection.funded.toLocaleString()}</Text>
+            <Text style={[styles.detailText, { color: tColors.success }]}>In: ₦{Number(currentSelection.in || 0).toLocaleString()}</Text>
           </View>
           <View style={styles.detailItem}>
             <View style={[styles.dot, { backgroundColor: tColors.error }]} />
-            <Text style={[styles.detailText, { color: tColors.error }]}>Out: ₦{currentSelection.withdrawals.toLocaleString()}</Text>
+            <Text style={[styles.detailText, { color: tColors.error }]}>Out: ₦{Number(currentSelection.out || 0).toLocaleString()}</Text>
           </View>
         </Animated.View>
       )}

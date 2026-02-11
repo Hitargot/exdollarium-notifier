@@ -25,10 +25,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 10,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   text: {
     color: '#fff',
     fontWeight: '700',
+    textAlign: 'center',
   },
   disabled: {
     opacity: 0.6,
