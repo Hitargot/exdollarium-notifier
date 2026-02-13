@@ -1,13 +1,27 @@
 import Constants from 'expo-constants';
+import { formatSignedAmount } from './formatAmount';
 
 export const buildTransactionReceipt = (trx: any) => {
   const fields: any[] = [];
+
+  // Fallback logic for sender/recipient names
+  const senderName = (trx.senderId?.fullName?.trim() && trx.senderId.fullName.trim() !== 'undefined undefined')
+    ? trx.senderId.fullName
+    : (trx.senderId?.username || trx.senderId?.payId || null);
+  
+  const recipientName = (trx.recipientId?.fullName?.trim() && trx.recipientId.fullName.trim() !== 'undefined undefined')
+    ? trx.recipientId.fullName
+    : (trx.recipientId?.username || trx.recipientId?.payId || null);
+
   fields.push({ label: 'Type', value: trx.type || 'N/A' });
+
   if (trx.amount !== undefined && trx.amount !== null) {
-    const { formatSignedAmount } = require('./formatAmount');
     fields.push({ label: 'Amount', value: formatSignedAmount(trx.amount, trx.type) });
   }
-  // Accept multiple possible fee field names from different API shapes
+
+  if (senderName) fields.push({ label: 'Sender', value: senderName });
+  if (recipientName) fields.push({ label: 'Recipient', value: recipientName });
+
   const feeCandidates = ['fee', 'fees', 'charge', 'transactionFee', 'withdrawFee', 'withdrawalFee'];
   let feeVal: any = null;
   for (const k of feeCandidates) {
@@ -15,50 +29,39 @@ export const buildTransactionReceipt = (trx: any) => {
   }
   if (feeVal !== undefined && feeVal !== null && Number(feeVal) !== 0) {
     fields.push({ label: 'Fee', value: `₦${Number(feeVal).toLocaleString()}` });
-    try {
-      const total = (Number(trx.amount || 0) + Number(feeVal || 0));
-      fields.push({ label: 'Total Debited', value: `₦${total.toLocaleString()}` });
-    } catch (e) { /* ignore */ }
   }
+
   const txId = trx.transactionId || trx._id || trx.id || null;
   fields.push({ label: 'Transaction ID', value: txId, copyable: true });
+
   const dateRaw = trx.date || trx.createdAt || trx.updatedAt || null;
   const isoDate = dateRaw ? (new Date(dateRaw)).toISOString() : '';
   fields.push({ label: 'Date', value: isoDate });
+
   fields.push({ label: 'Status', value: trx.status || 'N/A' });
+
   if (trx.bankMeta) fields.push({ label: 'Bank', value: trx.bankMeta });
-  // Include account name when available (various API shapes)
+  
   const acctName = trx.accountName || trx.accountHolderName || (trx.bank && (trx.bank.accountName || trx.bank.accountHolderName));
   if (acctName) fields.push({ label: 'Account Name', value: acctName });
+  
   if (trx.note) fields.push({ label: 'Note', value: trx.note });
-  const receipt: any = { title: 'Transaction Receipt', date: isoDate, fields, header: { brand: 'EXDOLLARIUM', title: 'Official Transaction Receipt' } };
-  // include username when available from common API shapes
+
+  const receipt: any = { 
+    title: 'Transaction Receipt', 
+    date: isoDate, 
+    fields, 
+    header: { brand: 'EXDOLLARIUM', title: 'Official Transaction Receipt' } 
+  };
+
   const username = trx.username || (trx.user && trx.user.username) || trx.initiator?.username || null;
   if (username) receipt.header.username = username;
-  // include email when available
+
   const email = trx.email || (trx.user && trx.user.email) || trx.initiator?.email || null;
   if (email) receipt.header.email = email;
+
   if (txId) receipt.transactionRef = txId;
-  // Include any admin-uploaded receipt files (absolute URLs).
-  try {
-    if (trx.adminReceipts && Array.isArray(trx.adminReceipts) && trx.adminReceipts.length) {
-      const extras: any = (Constants.expoConfig && (Constants.expoConfig as any).extra) || {};
-      const configured = (extras.apiUrl || extras.API_URL || extras.apiUrl) || '';
-      const base = String(configured).replace(/\/$/, '');
-      const mapped = trx.adminReceipts.map((p: string) => {
-        if (!p) return p;
-        if (/^https?:\/\//i.test(p)) return p;
-        if (p.startsWith('/')) return `${base}${p}`;
-        return `${base}/${p}`;
-      }).filter(Boolean);
-      if (mapped.length) receipt.fields.push({ label: 'Receipt File', value: mapped });
-    }
-  } catch (e) {
-    // ignore mapping errors and fall back to raw values
-    if (trx.adminReceipts && Array.isArray(trx.adminReceipts) && trx.adminReceipts.length) {
-      receipt.fields.push({ label: 'Receipt File', value: trx.adminReceipts });
-    }
-  }
+
   return receipt;
 };
 

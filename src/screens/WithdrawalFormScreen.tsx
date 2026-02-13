@@ -48,6 +48,7 @@ const WithdrawalFormScreen = () => {
   const styles = useMemo(() => createStyles(t), [t]);
 
   const [amount, setAmount] = useState('');
+  const [amountDisplay, setAmountDisplay] = useState('');
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
@@ -252,8 +253,12 @@ const WithdrawalFormScreen = () => {
               <Text style={styles.currencySymbol}>₦</Text>
               <TextInput
                 placeholder="0.00"
-                value={amount}
-                onChangeText={(t) => setAmount(t.replace(/[^0-9]/g, ''))}
+                value={amountDisplay}
+                onChangeText={(t) => {
+                  const raw = t.replace(/[^0-9.]/g, '');
+                  setAmount(raw);
+                  try { setAmountDisplay(require('../utils/numberFormat').formatWithCommas(raw)); } catch { setAmountDisplay(raw); }
+                }}
                 keyboardType="numeric"
                 style={styles.hugeInput}
                 placeholderTextColor="#CBD5E1"
@@ -265,7 +270,7 @@ const WithdrawalFormScreen = () => {
                 <TouchableOpacity 
                   key={v} 
                   style={styles.quickBtn} 
-                  onPress={() => setAmount(String(v))}
+                  onPress={() => { setAmount(String(v)); try { setAmountDisplay(require('../utils/numberFormat').formatWithCommas(String(v))); } catch { setAmountDisplay(String(v)); } }}
                 >
                   <Text style={styles.quickText}>₦{v.toLocaleString()}</Text>
                 </TouchableOpacity>

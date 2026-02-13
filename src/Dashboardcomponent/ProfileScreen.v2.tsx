@@ -20,6 +20,7 @@ import { usePreferences } from '../contexts/PreferencesContext';
 import theme from '../styles/theme';
 import authStorage from '../utils/authStorage';
 import * as authLock from '../utils/authLock';
+import { savePushToken, unregisterPushToken } from '../utils/pushTokenManager';
 import { RootStackParamList } from '../screens/types';
 
 type Extra = { apiUrl: string; env: string };
@@ -198,46 +199,33 @@ const ActionButton = ({ label, icon, onPress, styles, theme }: any) => (
   const handleLogout = async () => {
     const ok = await showInAppConfirm({ 
       title: 'Logout', 
-      message: 'Are you sure you want to log out of your session?',
+      message: 'Are you sure you want to logout?',
       confirmText: 'Logout',
-      cancelText: 'Stay'
     });
-    if (!ok) return;
-
-    try {
-      // Clear Session Data
-      await AsyncStorage.multiRemove([
-        '@profile_cache_v2', 'defaultService', 'balanceVisible', 
-        'filter:type', 'filter:startDate', 'filter:endDate'
-      ]);
-
-      // Unregister Push Notifications (Fire and Forget)
-      // Inside handleLogout...
-try {
-  const pushManager = await import('../utils/pushTokenManager').catch(() => null);
-  if (pushManager && typeof pushManager.unregisterPushToken === 'function') {
-    const token = await authStorage.getToken();
-    
-    // Wrap in a try/catch instead of .catch() to handle void vs Promise 
-    try {
-      await pushManager.unregisterPushToken(token);
-    } catch (pushErr) {
-      console.log('Push unregister failed', pushErr);
-    }
-  }
-} catch (e) {
-  // Silent ignore for the dynamic import
-}
-
-      showToast('Logged out');
-      const passHash = await authLock.getPasscodeHash();
-      if (passHash) {
-        navigation.reset({ index: 0, routes: [{ name: 'PasscodeUnlock' }] });
-      } else {
-        navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+    if (ok) {
+      try {
+        const token = await authStorage.getToken();
+        await unregisterPushToken(token);
+      } catch (e) {
+        console.warn('Failed to unregister from push notifications', e);
       }
-    } catch (e) {
-      showToast('Error during logout');
+      await authStorage.removeToken();
+      await authLock.clear();
+      // After logout, navigate to a login/auth screen.
+      // This assumes you have a screen named 'Login' in your root stack.
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Login' }],
+      });
+    }
+  };
+
+  const handleShareReferral = async () => {
+    try {
+      const message = `Join me on this amazing app! Use my referral code: ${user?.referralCode}`;
+      await Share.share({ message });
+    } catch (err: any) {
+      showToast('Failed to share referral code');
     }
   };
 

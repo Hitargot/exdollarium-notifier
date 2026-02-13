@@ -19,26 +19,19 @@ import authStorage from '../utils/authStorage';
 
 import SkeletonBox from '../components/SkeletonBox';
 import ActionButton from '../components/ActionButton';
-import { buildTransactionReceipt, buildConfirmationReceipt } from '../utils/receiptBuilders';
-import { normalizeTransactionRef, isMinimalTransaction } from '../utils/receiptHelpers';
 import ServicePickerModal from '../components/ServicePickerModal';
 import TransactionItem from '../components/TransactionItem';
 import { getWalletData, getConfirmations, getTransactions, getProfile, getPreSubmissionsCount, getNotifications, markNotificationRead, markAllNotificationsRead, getTransactionReceipt, getConfirmationReceipt } from '../api/client';
-import { sanitizeReceipt } from '../utils/receiptSanitizer';
 import { showToast } from '../utils/toast';
 import { getLastLoadedAt, setLastLoadedAt, getCachedTransactions, setCachedTransactions } from '../utils/transactionCache';
 import { set as simpleCacheSet, setLastLoadedAt as simpleCacheSetLastLoadedAt, setFetching as simpleCacheSetFetching, isFetching as simpleCacheIsFetching, getLastLoadedAt as simpleCacheGetLastLoadedAt } from '../utils/simpleCache';
 // Modal removed: notifications now live in a dedicated Notifications screen
 import staticTheme from '../styles/theme';
 import { useTheme } from '../theme/index';
-import ScreenHeader from '../components/ScreenHeader';
 import Flyer from '../components/Flyer';
-import { pickContrastText } from '../theme/colorUtils';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NavBar from '../components/NavBar';
 import BalanceSparkline from '../components/BalanceSparkline';
-import { showInAppToast } from '../contexts/ToastContext';
-import { showInAppConfirm } from '../contexts/ConfirmContext';
 import Constants from 'expo-constants';
 
 // Prefer an explicit configured API URL. Avoid falling back to a production
@@ -55,14 +48,6 @@ const DashboardScreen = () => {
   const navigation: any = useNavigation();
   const route = useRoute();
 
-  const [loading, setLoading] = useState<boolean>(() => {
-    try {
-      const cached = getCachedTransactions();
-      return !(cached && cached.length);
-    } catch (e) {
-      return true;
-    }
-  });
   const [refreshing, setRefreshing] = useState(false);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [balanceVisible, setBalanceVisible] = useState<boolean>(true);
@@ -87,174 +72,11 @@ const DashboardScreen = () => {
   // undoVisible removed; use in-app toast with action for Undo
 
   const insets = useSafeAreaInsets();
-  const undoPrevRef = useRef<any[] | null>(null);
-  const undoTimeoutRef = useRef<number | null>(null);
 
-  const handleMarkAll = async () => {
-    // Snapshot previous notifications so we can undo locally
-    const prev = notifications;
-    undoPrevRef.current = prev;
-
-    try {
-      // Optimistically mark all as read in UI
-      setNotifications((prevList) => (prevList || []).map((n: any) => ({ ...n, read: true })));
-      setUnreadCount(0);
-      // Auto-clear undo snapshot after 6s
-      if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current as any);
-      undoTimeoutRef.current = setTimeout(() => { undoPrevRef.current = null; }, 6000) as unknown as number;
-
-      // Fire server request, but don't block the UI
-      await markAllNotificationsRead();
-      showToast('All notifications marked read');
-    } catch (e) {
-      console.warn('Mark all notifications error', e);
-      showToast('Failed to mark all notifications');
-      // revert optimistic update on failure
-      if (undoPrevRef.current) {
-        setNotifications(undoPrevRef.current);
-        const ucount = Array.isArray(undoPrevRef.current) ? undoPrevRef.current.filter((n: any) => !n.read).length : 0;
-        setUnreadCount(ucount);
-        undoPrevRef.current = null;
-      }
-    }
-  };
-
-  const handleUndoMarkAll = () => {
-    if (undoTimeoutRef.current) { clearTimeout(undoTimeoutRef.current as any); undoTimeoutRef.current = null; }
-    const prev = undoPrevRef.current;
-    if (prev) {
-      setNotifications(prev);
-      const ucount = Array.isArray(prev) ? prev.filter((n: any) => !n.read).length : 0;
-      setUnreadCount(ucount);
-      undoPrevRef.current = null;
-      showToast('Undo: notifications restored locally');
-    }
-  };
-
-  // Format badge count for display (cap at 20+ to avoid ugly overflow)
+  // Format badge count for display
   const formatBadgeCount = (n: number) => {
     if (!n || n <= 0) return '';
-    return n >= 20 ? '20+' : String(n);
-  };
-
-  const handleMarkOne = async (item: any) => {
-    try {
-      await markNotificationRead(item._id);
-      setNotifications((prev) => prev.map((n) => (n._id === item._id ? { ...n, read: true } : n)));
-      setUnreadCount((prev) => Math.max(0, prev - 1));
-      showToast('Notification marked read');
-    } catch (e) {
-      console.warn('Failed to mark notification', e);
-      showToast('Failed to mark notification');
-    }
-  };
-
-  const showUnableToOpenAlert = (item: any, title = 'Unable to open', message = 'Could not load details for this notification. Would you like to mark it as read?') => {
-    (async () => {
-      try {
-        if (item?.read) {
-          // Show info-style modal (single Close button)
-          await showInAppConfirm({ title, message: message.replace(' Would you like to mark it as read?', '').replace('Would you like to mark it as read?', ''), confirmText: 'Close', cancelText: '' });
-        } else {
-          // Prompt user to mark as read (Confirm + Cancel)
-          const ok = await showInAppConfirm({ title, message, confirmText: 'Mark', cancelText: 'Close' });
-          if (ok) handleMarkOne(item);
-        }
-      } catch (e) {
-        // fallback to Alert if something goes wrong
-        if (item?.read) {
-          Alert.alert(title, message.replace(' Would you like to mark it as read?', '').replace('Would you like to mark it as read?', ''), [
-            { text: 'Close', style: 'cancel' },
-          ]);
-        } else {
-          Alert.alert(title, message, [
-            { text: 'Mark', onPress: () => handleMarkOne(item) },
-            { text: 'Close', style: 'cancel' },
-          ]);
-        }
-      }
-    })();
-  };
-
-  const handleNotificationPress = async (item: any) => {
-    // Try to fetch a full receipt and navigate. If we cannot fetch, offer the user to mark the notification instead of auto-closing.
-    try {
-      const rawId = item.transactionId || item.transactionRef || item.resourceId;
-      const parsedFromMessage = normalizeTransactionRef(item.message || item.title || item.body || '');
-      const id = rawId || parsedFromMessage;
-
-      if (item.type && item.type.toLowerCase().includes('presubmission')) {
-        // notifications are now a separate screen; closing handled by navigation
-        navigation.navigate('MyPreSubmissions' as any);
-        try { await markNotificationRead(item._id); setUnreadCount((p) => Math.max(0, p - 1)); setNotifications((prev) => prev.map((n) => n._id === item._id ? { ...n, read: true } : n)); } catch { };
-        return;
-      }
-
-      if (item.transactionId || item.transactionRef || item.resourceId) {
-        const rawId2 = item.transactionId || item.transactionRef || item.resourceId;
-        const parsed = normalizeTransactionRef(item.message || item.title || item.body || '');
-        const id2 = rawId2 || parsed;
-        const trxResp = id2 ? await getTransactionReceipt(id2).catch(() => null) : null;
-        if (trxResp) {
-          const receiptData = buildTransactionReceipt(trxResp);
-          if (!receiptData.transactionRef) receiptData.transactionRef = normalizeTransactionRef(trxResp.transactionId || trxResp._id || trxResp.id || id2);
-          if (!receiptData.date) receiptData.date = trxResp.date || trxResp.createdAt || undefined;
-          const sanitized = sanitizeReceipt(receiptData);
-          // navigation will handle closing notifications screen
-          navigation.navigate('Receipt' as any, { receiptData: sanitized } as any);
-          try { await markNotificationRead(item._id); setUnreadCount((p) => Math.max(0, p - 1)); setNotifications((prev) => prev.map((n) => n._id === item._id ? { ...n, read: true } : n)); } catch { }
-          return;
-        }
-
-        // cannot fetch a real receipt — ask the user whether to mark it or close
-        showUnableToOpenAlert(item);
-        return;
-      }
-
-      if (item.resourceType === 'transaction' || (item.type && item.type.toLowerCase().includes('withdrawal'))) {
-        const trxId = item.transactionRef || item.resourceId || item.transactionId;
-        const trxResp = trxId ? await getTransactionReceipt(trxId).catch(() => null) : null;
-        if (trxResp) {
-          const receiptData = buildTransactionReceipt(trxResp);
-          if (!receiptData.transactionRef) receiptData.transactionRef = trxResp.transactionId || trxResp._id || trxResp.id || undefined;
-          if (!receiptData.date) receiptData.date = trxResp.date || trxResp.createdAt || undefined;
-          const sanitized = sanitizeReceipt(receiptData);
-          // navigation will handle closing notifications screen
-          navigation.navigate('Receipt' as any, { receiptData: sanitized } as any);
-          try { await markNotificationRead(item._id); setUnreadCount((p) => Math.max(0, p - 1)); setNotifications((prev) => prev.map((n) => n._id === item._id ? { ...n, read: true } : n)); } catch { }
-          return;
-        }
-
-        showUnableToOpenAlert(item);
-        return;
-      }
-
-      if (item.resourceType === 'confirmation' || item.type && item.type.toLowerCase().includes('confirmation')) {
-        const confResp = await getConfirmationReceipt(item.resourceId || item.transactionId).catch(() => null);
-        if (confResp) {
-          const receiptData = buildConfirmationReceipt(confResp);
-          if (!receiptData.transactionRef) receiptData.transactionRef = confResp.transactionId || confResp._id || confResp.id || undefined;
-          if (!receiptData.date) receiptData.date = confResp.date || confResp.createdAt || undefined;
-          // navigation will handle closing notifications screen
-          navigation.navigate('Receipt' as any, { receiptData } as any);
-          try { await markNotificationRead(item._id); setUnreadCount((p) => Math.max(0, p - 1)); setNotifications((prev) => prev.map((n) => n._id === item._id ? { ...n, read: true } : n)); } catch { }
-          return;
-        }
-
-        showUnableToOpenAlert(item);
-        return;
-      }
-    } catch (e) {
-      console.warn('Notification press error', e);
-      if (item?.read) {
-        Alert.alert('Error', 'An error occurred while opening this notification.', [{ text: 'Close', style: 'cancel' }]);
-      } else {
-        Alert.alert('Error', 'An error occurred while opening this notification. You can mark it as read instead.', [
-          { text: 'Mark', onPress: () => handleMarkOne(item) },
-          { text: 'Close', style: 'cancel' },
-        ]);
-      }
-    }
+    return String(n);
   };
 
   const normalizeTxns = (walletTxns: any[] = [], txnApi: any[] = [], confirmations: any[] = [], userId?: string) => {
@@ -317,35 +139,39 @@ const DashboardScreen = () => {
     try {
       const token = await authStorage.getToken();
 
-      // Fetch resources independently so the UI can render each section as it becomes available
-      // 1) Profile
+      // 1) Profile, then 2) Transactions/Confirmations (dependent on profile)
       getProfile().then((profileRes) => {
-        try { setProfile(profileRes || null); } catch (e) { /* ignore */ }
+        try {
+          setProfile(profileRes || null);
+          console.log('[Dashboard] Profile loaded, id =', profileRes?._id);
+
+          // Now fetch transactions since we have the user ID
+          Promise.all([getTransactions().catch(() => ({ transactions: [] })), getConfirmations().catch(() => ({ confirmations: [] }))])
+            .then(([txRes, confRes]) => {
+              try {
+                const walletTxns: any[] = [];
+                const apiTxns = txRes?.transactions || txRes?.data?.transactions || [];
+                const confs = confRes?.confirmations || confRes?.data?.confirmations || [];
+                const userId = profileRes?._id;
+                console.log('[Dashboard] Normalizing transactions with userId =', userId);
+                const combined = normalizeTxns(walletTxns, apiTxns, confs, userId).slice(0, 20);
+                setTransactions(combined);
+                try { setCachedTransactions(combined); setLastLoadedAt(Date.now()); simpleCacheSet('transactions', combined); simpleCacheSetLastLoadedAt('transactions', Date.now()); } catch (_) { }
+                console.log('[Dashboard] txns+confs loaded, count =', combined.length);
+              } catch (e) { console.warn('Error processing txns/conf', e); }
+            }).catch((e) => { console.warn('Transactions/Confirmations load failed', e); })
+            .finally(() => { setLoadingTxns(false); try { simpleCacheSetFetching('transactions', false); } catch (_) {} });
+
+        } catch (e) { /* ignore */ }
       }).catch(() => { /* ignore profile fetch failures */ }).finally(() => { setLoadingProfile(false); });
 
-      // 2) Wallet (balance + wallet transactions)
+      // 3) Wallet (balance can load independently)
       getWalletData().then((walletRes) => {
         try {
           const walletBalanceVal = walletRes?.balance ?? walletRes?.data?.balance ?? 0;
           setWalletBalance(walletBalanceVal);
         } catch (e) { /* ignore */ }
       }).catch(() => { /* ignore wallet fetch */ }).finally(() => { setLoadingWallet(false); });
-
-      // 3) Transactions and confirmations: combine then set once available
-      Promise.all([getTransactions().catch(() => ({ transactions: [] })), getConfirmations().catch(() => ({ confirmations: [] }))])
-        .then(([txRes, confRes]) => {
-          try {
-            const walletTxns: any[] = []; // wallet-specific transactions excluded here (we fetch via getTransactions)
-            const apiTxns = txRes?.transactions || txRes?.data?.transactions || [];
-            const confs = confRes?.confirmations || confRes?.data?.confirmations || [];
-            const userId = undefined;
-            const combined = normalizeTxns(walletTxns, apiTxns, confs, userId).slice(0, 20);
-            setTransactions(combined);
-            try { setCachedTransactions(combined); setLastLoadedAt(Date.now()); simpleCacheSet('transactions', combined); simpleCacheSetLastLoadedAt('transactions', Date.now()); } catch (_) { }
-            console.debug('[Dashboard] txns+confs loaded, count =', combined.length);
-          } catch (e) { console.warn('Error processing txns/conf', e); }
-        }).catch((e) => { console.warn('Transactions/Confirmations load failed', e); })
-        .finally(() => { setLoadingTxns(false); try { simpleCacheSetFetching('transactions', false); } catch (_) {} });
 
     } catch (err) {
       console.warn('Dashboard load error', err);
@@ -521,10 +347,12 @@ const DashboardScreen = () => {
                     <View style={{ position: 'relative' }}>
                       <Ionicons name="notifications-outline" size={24} color={theme.colors.primary} />
                       {ucount > 0 && (
-                            <View style={[styles.badge, { backgroundColor: theme.colors.error }]}>
-                              <Text style={styles.badgeText}>{formatBadgeCount(ucount)}</Text>
-                            </View>
-                          )}
+  <View style={styles.badge}>
+    <Text style={styles.badgeText}>
+       {ucount > 20 ? '20+' : ucount}
+    </Text>
+  </View>
+)}
                     </View>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => navigation.navigate('MyPreSubmissions' as any)}>
@@ -1079,8 +907,25 @@ const createStyles = (t: any) => StyleSheet.create({
   bottomBarLabel: { fontSize: 12, color: '#333', marginTop: 4 },
   activeBarItem: { backgroundColor: t.colors.surface, borderRadius: 8, marginHorizontal: 8, paddingVertical: 6 },
   activeLabel: { color: t.colors.primary, fontWeight: '700' },
-  badge: { position: 'absolute', right: -6, top: -6, backgroundColor: t.colors.error, borderRadius: 10, minWidth: 28, height: 20, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  badgeText: { color: t.colors.white, fontSize: 11, fontWeight: '800', textAlign: 'center', lineHeight: 20 },
+  badge: {
+    position: 'absolute',
+    right: -8,
+    top: -8,
+    backgroundColor: t.colors.primary,
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: t.colors.background,
+  },
+  badgeText: {
+    color: t.colors.white,
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
   // screenHeader and screenHeaderText removed — header intentionally disabled
   modalContainer: { flex: 1, backgroundColor: t.colors.surface },
   modalList: { flex: 1, padding: 16 },

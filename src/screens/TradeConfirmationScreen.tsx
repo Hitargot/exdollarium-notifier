@@ -49,6 +49,7 @@ const TradeConfirmationScreen = () => {
     
     const [note, setNote] = useState('');
     const [amount, setAmount] = useState<string>('');
+  const [amountDisplay, setAmountDisplay] = useState<string>('');
     const [currency, setCurrency] = useState<string>('USD');
     const [files, setFiles] = useState<DocumentPickerAsset[]>([]);
     const [isPreSubmit, setIsPreSubmit] = useState<boolean>(false);
@@ -186,8 +187,12 @@ const TradeConfirmationScreen = () => {
                     <View style={styles.amountInputRow}>
                         <Text style={styles.currencySymbol}>{currency === 'USD' ? '$' : currency}</Text>
             <TextInput
-              value={amount}
-              onChangeText={(v) => setAmount(v.replace(/[^0-9.]/g, ''))}
+              value={amountDisplay}
+              onChangeText={(v) => {
+                  const raw = v.replace(/[^0-9.]/g, '');
+                  setAmount(raw);
+                  try { setAmountDisplay(require('../utils/numberFormat').formatWithCommas(raw)); } catch { setAmountDisplay(raw); }
+              }}
               placeholder="0.00"
               placeholderTextColor={runtimeTheme.colors?.muted || '#94A3B8'}
               keyboardType="numeric"

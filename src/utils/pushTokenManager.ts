@@ -92,7 +92,33 @@ export async function savePushToken(authToken: string | null, fcmToken?: string 
     (savePushToken as any)._inFlight = null;
   }
 }
-export function unregisterPushToken(auth: string | null) {
-  throw new Error('Function not implemented.');
+export async function unregisterPushToken(authToken: string | null): Promise<void> {
+  if (!authToken) return;
+  if (PUSH_REGISTRATION_DISABLED) return;
+
+  try {
+    const tokenToRemove = await AsyncStorage.getItem('expoPushToken');
+    if (!tokenToRemove) {
+      console.log('[pushTokenManager] no token found locally to unregister.');
+      return;
+    }
+
+    console.log('[pushTokenManager] unregistering token (preview):', String(tokenToRemove).slice(0, 24) + '...');
+    
+    // Endpoint for removing the token. Assuming a DELETE request.
+    // You may need to adjust the endpoint and payload based on your backend API.
+    await client.post('/api/auth/remove-fcm-token', { fcmToken: tokenToRemove });
+
+    await AsyncStorage.removeItem('expoPushToken');
+    console.log('[pushTokenManager] backend unregister call successful and local token cleared.');
+  } catch (err) {
+    const a: any = err;
+    if (a?.isAxiosError && a.response) {
+      console.error('[pushTokenManager] unregisterPushToken error: status=', a.response.status, 'data=', a.response.data);
+    } else {
+      console.error('[pushTokenManager] unregisterPushToken error', err);
+    }
+    // Do not re-throw, as logout should proceed anyway.
+  }
 }
 

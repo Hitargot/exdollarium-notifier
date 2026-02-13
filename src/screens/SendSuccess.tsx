@@ -1,5 +1,5 @@
-import React, { useRef, useEffect, useMemo } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView } from "react-native";
+import React, { useRef, useEffect, useMemo, useState } from "react";
+import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { StackScreenProps } from "@react-navigation/stack";
 import ConfettiCannon from "react-native-confetti-cannon";
@@ -20,6 +20,7 @@ type Props = StackScreenProps<RootStackParamList, "SendSuccess">;
 export default function SendSuccess({ navigation, route }: Props) {
   const { receiptData, message, status = "pending", isPeer: isPeerParam } = route.params || {};
   const confettiRef = useRef<ConfettiCannon | null>(null);
+  const [isNavigating, setIsNavigating] = useState(false);
 
   const { colors: tColors } = useTheme() || { colors: appTheme.colors };
   const styles = useMemo(() => createStyles(tColors), [tColors]);
@@ -70,6 +71,8 @@ export default function SendSuccess({ navigation, route }: Props) {
   }, [status, tColors, isPeerParam]);
 
   const handleDone = () => {
+    if (isNavigating) return;
+    setIsNavigating(true);
     navigation.reset({
       index: 0,
       routes: [{ name: "Dashboard" }],
@@ -105,17 +108,32 @@ export default function SendSuccess({ navigation, route }: Props) {
         {receiptData && (
           <TouchableOpacity
             style={styles.primaryBtn}
+            disabled={isNavigating}
             onPress={() => {
+              if (isNavigating) return;
+              setIsNavigating(true);
               const sanitized = sanitizeReceipt(receiptData);
               navigation.navigate("Receipt", { receiptData: sanitized });
             }}
           >
-            <Text style={styles.btnText}>View Receipt</Text>
+            {isNavigating ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.btnText}>View Receipt</Text>
+            )}
           </TouchableOpacity>
         )}
 
-        <TouchableOpacity style={styles.secondaryBtn} onPress={handleDone}>
-          <Text style={styles.secondaryBtnText}>Okay</Text>
+        <TouchableOpacity 
+          style={styles.secondaryBtn} 
+          onPress={handleDone}
+          disabled={isNavigating}
+        >
+          {isNavigating ? (
+            <ActivityIndicator color={tColors.primary} />
+          ) : (
+            <Text style={styles.secondaryBtnText}>Okay</Text>
+          )}
         </TouchableOpacity>
       </View>
     </SafeAreaView>

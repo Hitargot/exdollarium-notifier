@@ -29,6 +29,7 @@ const SendExdollarium: React.FC = () => {
     // State
     const [recipient, setRecipient] = useState('');
     const [amount, setAmount] = useState('');
+    const [amountDisplay, setAmountDisplay] = useState('');
     const [note, setNote] = useState('');
     const [pin, setPin] = useState('');
     const [step, setStep] = useState<'recipient' | 'details' | 'confirm' | 'pin'>('recipient');
@@ -234,8 +235,12 @@ const SendExdollarium: React.FC = () => {
                             <TextInput
                                 style={styles.amountInput}
                                 placeholder="0.00"
-                                value={amount}
-                                onChangeText={(val) => setAmount(val.replace(/[^0-9.]/g, ''))}
+                                value={amountDisplay}
+                                onChangeText={(val) => {
+                                    const raw = val.replace(/[^0-9.]/g, '');
+                                    setAmount(raw);
+                                    try { const nf = require('../utils/numberFormat').formatWithCommas(raw); setAmountDisplay(nf); } catch { setAmountDisplay(raw); }
+                                }}
                                 keyboardType="numeric"
                                 autoFocus
                             />
@@ -243,7 +248,7 @@ const SendExdollarium: React.FC = () => {
 
                         <View style={styles.presetsRow}>
                             {[5000, 10000, 20000, 50000].map((val) => (
-                                <TouchableOpacity key={val} style={styles.presetBtn} onPress={() => setAmount(String(val))}>
+                                <TouchableOpacity key={val} style={styles.presetBtn} onPress={() => { setAmount(String(val)); try { setAmountDisplay(require('../utils/numberFormat').formatWithCommas(String(val))); } catch { setAmountDisplay(String(val)); } }}>
                                     <Text style={styles.presetText}>₦{(val/1000)}k</Text>
                                 </TouchableOpacity>
                             ))}

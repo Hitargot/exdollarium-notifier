@@ -41,7 +41,6 @@ const ReceiptScreen = () => {
     const theme = themeCtx || appTheme;
     const styles = useMemo(() => createStyles(theme), [theme]);
 
-    // --- LOGIC FROM YOUR ORIGINAL SCRIPT ---
     const buildReceiptHtml = (data: any, logoDataUri?: string, watermarkDataUri?: string) => {
         const fields: any[] = data?.fields || [];
         const statusVal = (fields.find((f: any) => (f.label || '').toString() === 'Status') || {}).value || data?.status || '';
@@ -139,8 +138,8 @@ const ReceiptScreen = () => {
     };
 
     const getField = (label: string) => findFieldValue([label, label.toLowerCase(), label.replace(/\s+/g, '')]);
-    const topFields = fields.filter((f: any) => ['Service', 'Amount', 'Type'].includes(f.label));
-    const otherFields = fields.filter((f: any) => !['Service', 'Amount', 'Type'].includes(f.label));
+    const topFields = fields.filter((f: any) => !['Amount', 'Service', 'Type'].includes(f.label));
+    const otherFields = fields.filter((f: any) => !['Amount', 'Service', 'Type'].includes(f.label));
 
     useEffect(() => {
         let cancelled = false;
@@ -181,33 +180,7 @@ const ReceiptScreen = () => {
                     if (!receipt.header) receipt.header = {};
                     receipt.header.username = username;
                 }
-
-                // Amount: prefer userAmountInForeignCurrency + userSelectedCurrency, else amountInForeignCurrency, else amountInNaira
-                let displayAmount = '';
-                const ua = source?.userAmountInForeignCurrency || source?.amountInForeignCurrency || source?.amount || source?.amountInNaira || null;
-                const uc = source?.userSelectedCurrency || source?.selectedCurrency || source?.currency || source?.userSelectedCurrency;
-                if (ua != null) {
-                    const numeric = Number(ua);
-                    if (uc && String(uc).trim()) {
-                        const cc = String(uc).toUpperCase();
-                        const symbols: any = { USD: '$', EUR: '€', GBP: '£', NGN: '₦' };
-                        const sym = symbols[cc] || '';
-                        // If currency is NGN and the backend provided amountInNaira, avoid duplicating symbol
-                        if (cc === 'NGN' && source?.amountInNaira != null) {
-                            displayAmount = `₦${Number(numeric).toLocaleString()}`;
-                        } else {
-                            displayAmount = `${cc} ${sym}${Number(numeric).toFixed(2)}`.replace(/\s+/g, ' ').trim();
-                        }
-                    } else {
-                        // assume NGN if unknown currency
-                        displayAmount = `₦${Number(numeric).toLocaleString()}`;
-                    }
-                }
-
-                if (displayAmount) {
-                    upsertField('Amount', displayAmount);
-                }
-
+                
                 // Also ensure Service and Type are present from source if missing
                 if (!existingFields.find(f => (f.label || '').toLowerCase() === 'service') && source?.service) {
                     upsertField('Service', source.service.name || source.service || '');

@@ -112,6 +112,12 @@ export async function clearLastLogin() {
   }
 }
 
+export async function clear() {
+  await clearPasscode();
+  await clearLastAuth();
+  await clearLastLogin();
+}
+
 export default {
   setPasscode,
   getPasscodeHash,
@@ -123,5 +129,6 @@ export default {
   setLastLogin,
   getLastLogin,
   clearLastLogin,
+  clear,
 };
 

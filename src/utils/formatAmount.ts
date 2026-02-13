@@ -3,9 +3,13 @@ export const formatSignedAmount = (amount?: number | null, type?: string) => {
   const num = Number(amount || 0);
   const abs = Math.abs(num);
   const t = (type || '').toString().toLowerCase();
-  const isNegative = t.includes('withdrawal') || t.includes('sent transfer') || t.includes('sent');
-  const isPositive = t.includes('fund') || t.includes('received transfer') || t.includes('received');
+  
+  // More specific checks for transaction types
+  const isNegative = t.includes('withdrawal') || t.includes('sent') || t.includes('debit') || t === 'transfer';
+  const isPositive = t.includes('fund') || t.includes('received') || t.includes('credit') || t.includes('deposit') || t === 'receive';
+
   const sign = isNegative ? '-' : isPositive ? '+' : '';
+  
   return `${sign}₦${abs.toLocaleString()}`;
 };
 

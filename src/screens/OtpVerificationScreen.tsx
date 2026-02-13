@@ -69,51 +69,28 @@ const OtpVerificationScreen = ({ route }: any) => {
   }, []);
 
   const handleOtpChange = (value: string, index: number) => {
-    const digits = value.replace(/\D/g, "");
-    const newOtp = [...otp];
-
-    if (digits.length > 1) {
-      // Handle Paste
-      isApplyingOtpRef.current = true;
-      const pasted = digits.slice(0, 6).split("");
-      const updatedOtp = [
-        ...pasted,
-        ...Array(6 - pasted.length).fill(""),
-      ].slice(0, 6);
-      setOtp(updatedOtp);
-      // When a full code is pasted, avoid focus changes and verify
-      if (pasted.length === 6) {
-        Keyboard.dismiss();
-        // ensure visible UI updates before verification completes
+    // 1. Handle Autofill/Paste (6 digits landing in one box)
+    if (value.length > 1) {
+        const otpArray = value.slice(0, 6).split('');
+        setOtp(otpArray);
         setFocusedIndex(5);
-        // small delay to let inputs render without focus toggles
-        setTimeout(() => verifyOtp(updatedOtp.join("")), 80);
-      }
-      // release the apply guard shortly after
-      setTimeout(() => {
-        isApplyingOtpRef.current = false;
-      }, 300);
-      return;
+        Keyboard.dismiss();
+        verifyOtp(value.slice(0, 6));
+        return;
     }
 
-    newOtp[index] = digits;
+    // 2. Handle Manual Entry (1 digit)
+    const newOtp = [...otp];
+    newOtp[index] = value;
     setOtp(newOtp);
 
-    if (digits && index < 5) {
-      // debounce focus to avoid rapid toggle/jitter. If we're currently
-      // applying a remote OTP (autofill/paste), skip programmatic focus
-      // calls entirely to avoid stealing focus back and forth.
-      const now = Date.now();
-      setFocusedIndex(index + 1);
-      if (!isApplyingOtpRef.current && now - lastFocusTs.current > 120) {
-        lastFocusTs.current = now;
-        inputRefs.current[index + 1]?.focus();
-      }
-    } else if (newOtp.every((d) => d !== "")) {
-      Keyboard.dismiss();
-      verifyOtp(newOtp.join(""));
+    if (value && index < 5) {
+        // Use setImmediate or a tiny timeout to ensure the UI renders before moving focus
+        setTimeout(() => {
+            inputRefs.current[index + 1]?.focus();
+        }, 10);
     }
-  };
+};
 
   const handleKeyPress = (e: any, index: number) => {
     if (e.nativeEvent.key === "Backspace" && !otp[index] && index > 0) {
@@ -194,34 +171,32 @@ const OtpVerificationScreen = ({ route }: any) => {
 
           <View style={styles.otpWrapper}>
             {otp.map((digit, idx) => (
-              <TouchableOpacity
-                key={idx}
-                activeOpacity={1}
-                onPress={() => inputRefs.current[idx]?.focus()} // Force focus when the box is tapped
-                style={[
-                  styles.inputBox,
-                  focusedIndex === idx && styles.focusedBox,
-                  digit !== "" && { borderColor: tColors.primary },
-                ]}
-              >
-                <TextInput
-                  ref={(ref) => {
-                    inputRefs.current[idx] = ref;
-                  }}
-                  style={styles.otpInput}
-                  keyboardType="number-pad"
-                  maxLength={1}
-                  value={digit}
-                  // Remove onFocus if it's causing loops, or keep it but ensure
-                  // handleOtpChange focus logic is delayed.
-                  onFocus={() => setFocusedIndex(idx)}
-                  onChangeText={(v) => handleOtpChange(v, idx)}
-                  onKeyPress={(e) => handleKeyPress(e, idx)}
-                  // Critical for iOS focus stability:
-                  selectTextOnFocus={true}
-                />
-              </TouchableOpacity>
-            ))}
+    <TouchableOpacity 
+        key={idx} 
+        activeOpacity={1}
+        onPress={() => inputRefs.current[idx]?.focus()} // Fixes the "not focusing" on tap
+        style={[
+            styles.inputBox, 
+            focusedIndex === idx && styles.focusedBox,
+            digit !== "" && { borderColor: tColors.primary }
+        ]}
+    >
+        <TextInput
+            ref={(ref) => { inputRefs.current[idx] = ref; }}
+            style={styles.otpInput}
+            keyboardType="number-pad"
+            maxLength={idx === 0 ? 6 : 1} // Allow the first box to accept the full 6-digit paste/autofill
+            value={digit}
+            onFocus={() => setFocusedIndex(idx)}
+            onChangeText={(v) => handleOtpChange(v, idx)}
+            onKeyPress={(e) => handleKeyPress(e, idx)}
+            
+            // AUTOFILL CONFIG
+            textContentType={idx === 0 ? "oneTimeCode" : "none"} // iOS: Only the first box triggers autofill
+            autoComplete={Platform.OS === 'android' ? 'sms-otp' : 'one-time-code'} // Cross-platform support
+        />
+    </TouchableOpacity>
+))}
           </View>
 
           <View style={{ width: "100%", marginTop: 10 }}>

@@ -38,6 +38,7 @@ const CalculatorScreen: React.FC<Props> = ({ route }) => {
   const [selectedServiceLabelLoading, setSelectedServiceLabelLoading] = useState<boolean>(false);
   const [serviceData, setServiceData] = useState<any>(null);
   const [amount, setAmount] = useState<string>('');
+  const [amountDisplay, setAmountDisplay] = useState<string>('');
   const [targetCurrency, setTargetCurrency] = useState<'usd' | 'eur' | 'gbp'>('usd');
   const [showModal, setShowModal] = useState(false);
   const [isFetchingRate, setIsFetchingRate] = useState(false);
@@ -226,8 +227,12 @@ const CalculatorScreen: React.FC<Props> = ({ route }) => {
                   placeholderTextColor={theme.colors.muted}
                   keyboardType="decimal-pad"
                   style={styles.input}
-                  value={amount}
-                  onChangeText={(t) => setAmount(t.replace(/[^0-9.]/g, ''))}
+                  value={amountDisplay}
+                  onChangeText={(t) => {
+                    const raw = t.replace(/[^0-9.]/g, '');
+                    setAmount(raw);
+                    try { setAmountDisplay(require('../utils/numberFormat').formatWithCommas(raw)); } catch { setAmountDisplay(raw); }
+                  }}
                 />
               </View>
             )}
