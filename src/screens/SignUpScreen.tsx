@@ -30,6 +30,7 @@ const API_URL = Constants.expoConfig?.extra?.apiUrl;
 const SignUpScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { colors: tColors } = useTheme();
+  const styles = useMemo(() => createStyles(tColors), [tColors]);
 
   // Form State
   const [form, setForm] = useState({
@@ -252,30 +253,68 @@ const calculateStrength = (pass: string) => {
     </KeyboardAvoidingView>
   );
 };
-
-const styles = StyleSheet.create({
+const createStyles = (tColors: any) => StyleSheet.create({
   container: { flex: 1 },
   scrollContent: { padding: 20, paddingTop: 60, paddingBottom: 40 },
   header: { alignItems: 'center', marginBottom: 30 },
   brand: { fontSize: 28, fontWeight: '900', color: '#fff', letterSpacing: 2 },
   subtext: { color: 'rgba(255,255,255,0.7)', marginTop: 8 },
-  card: { backgroundColor: '#fff', borderRadius: 24, padding: 24, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, elevation: 5 },
+  card: { 
+    backgroundColor: tColors.surface, 
+    borderRadius: 24, 
+    padding: 24, 
+    shadowColor: '#000', 
+    shadowOpacity: 0.1, 
+    shadowRadius: 10, 
+    elevation: 5 
+  },
   title: { fontSize: 22, fontWeight: '800', marginBottom: 20 },
   row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 0 },
-  label: { fontSize: 13, fontWeight: '600', color: '#444', marginBottom: 6, marginTop: 12 },
-  input: { backgroundColor: '#F3F6F9', borderRadius: 12, padding: 14, fontSize: 15, color: '#111', borderWidth: 1, borderColor: '#E1E8ED' },
-  phoneContainer: { width: '100%', backgroundColor: '#F3F6F9', borderRadius: 12, height: 55, borderWidth: 1, borderColor: '#E1E8ED', overflow: 'hidden' },
+  label: { fontSize: 13, fontWeight: '600', color: tColors.text, marginBottom: 6, marginTop: 12 },
+  input: { 
+    backgroundColor: tColors.input || '#F3F6F9', 
+    borderRadius: 12, 
+    padding: 14, 
+    fontSize: 15, 
+    color: tColors.text, 
+    borderWidth: 1, 
+    borderColor: tColors.border || '#E1E8ED' 
+  },
+  phoneContainer: { 
+    width: '100%', 
+    backgroundColor: tColors.input || '#F3F6F9', 
+    borderRadius: 12, 
+    height: 55, 
+    borderWidth: 1, 
+    borderColor: tColors.border || '#E1E8ED' 
+  },
   phoneTextContainer: { backgroundColor: 'transparent', paddingVertical: 0 },
   fallbackPhoneRow: { flexDirection: 'row', alignItems: 'center' },
-  countryPicker: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F6F9', padding: 14, borderRadius: 12, marginRight: 8, borderWidth: 1, borderColor: '#E1E8ED' },
-  countryCode: { fontWeight: '700', marginRight: 4 },
-  passwordWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F6F9', borderRadius: 12, borderWidth: 1, borderColor: '#E1E8ED' },
+  countryPicker: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: tColors.input || '#F3F6F9', 
+    padding: 14, 
+    borderRadius: 12, 
+    marginRight: 8, 
+    borderWidth: 1, 
+    borderColor: tColors.border || '#E1E8ED' 
+  },
+  countryCode: { fontWeight: '700', marginRight: 4, color: tColors.text },
+  passwordWrapper: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: tColors.input || '#F3F6F9', 
+    borderRadius: 12, 
+    borderWidth: 1, 
+    borderColor: tColors.border || '#E1E8ED' 
+  },
   eyeIcon: { padding: 12 },
   termsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 20 },
-  termsText: { marginLeft: 10, fontSize: 14, color: '#666' },
-  linkText: { color: '#2563eb', fontWeight: '600' },
+  termsText: { marginLeft: 10, fontSize: 14, color: tColors.muted },
+  linkText: { color: tColors.primary, fontWeight: '600' },
   submitBtn: { marginTop: 24, height: 55, borderRadius: 12, justifyContent: 'center' },
-  legalText: { fontSize: 15, lineHeight: 22, color: '#444' },
+  legalText: { fontSize: 15, lineHeight: 22, color: tColors.text },
   strengthWrapper: {
   marginTop: 8,
   flexDirection: 'row',
@@ -284,7 +323,7 @@ const styles = StyleSheet.create({
 strengthBarBackground: {
   flex: 1,
   height: 4,
-  backgroundColor: '#E1E8ED',
+  backgroundColor: tColors.border || '#E1E8ED',
   borderRadius: 2,
   overflow: 'hidden',
   marginRight: 10,
