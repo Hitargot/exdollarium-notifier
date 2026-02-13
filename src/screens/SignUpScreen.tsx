@@ -5,18 +5,19 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
   Animated,
-  KeyboardAvoidingView,
   Platform,
   Modal,
   ActivityIndicator,
+  ScrollView,
 } from "react-native";
 import PhoneInput from "expo-phone-number-input";
 import Checkbox from "expo-checkbox";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from '@expo/vector-icons';
 import Constants from "expo-constants";
+
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view'
 
 // Project Imports
 import { showToast } from '../utils/toast';
@@ -112,8 +113,14 @@ const calculateStrength = (pass: string) => {
   };
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[styles.container, { backgroundColor: tColors.primary }]}>
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+    <KeyboardAwareScrollView
+      style={[styles.container, { backgroundColor: tColors.primary }]}
+      contentContainerStyle={styles.scrollContent}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+      enableOnAndroid={true}
+      extraScrollHeight={Platform.OS === 'ios' ? 0 : 20}
+    >
         
         <View style={styles.header}>
           <Text style={styles.brand}>EXDOLLARIUM</Text>
@@ -249,8 +256,7 @@ const calculateStrength = (pass: string) => {
         <Text style={styles.legalText}>{"\u2022"} Service availability may vary; we may modify or suspend features with notice where required.</Text>
       </ScrollView>
     </ConfirmModal>
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardAwareScrollView>
   );
 };
 const createStyles = (tColors: any) => StyleSheet.create({
