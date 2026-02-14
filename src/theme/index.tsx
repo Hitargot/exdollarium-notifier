@@ -24,8 +24,8 @@ export const dark = {
   // Use true black for dark mode background to achieve a true "black" dark theme
   background: '#000000',
   card: '#0f1724',
-  text: '#e6eef9',
-  muted: '#9aa6bf',
+  text: '#9aa6bf', // Changed from #e6eef9
+  muted: '#4b5563',
   border: '#1f2937',
   accent: '#FF6B65',
   favorite: '#ffbf00'

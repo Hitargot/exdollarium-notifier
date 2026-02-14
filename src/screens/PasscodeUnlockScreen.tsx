@@ -81,7 +81,7 @@ const PasscodeUnlockScreen: React.FC = () => {
       title: 'Reset Passcode?',
       message: 'For security, you will be logged out and must sign in again to set a new passcode.',
       confirmText: 'Reset & Logout',
-      cancelText: 'Cancel'
+      // No cancelText means it's a one-button alert
     });
 
     if (ok) {
