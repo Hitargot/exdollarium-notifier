@@ -1,182 +1,227 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, 
-  SafeAreaView, Keyboard, Platform
+import { 
+  View, 
+  Text, 
+  TextInput, 
+  TouchableOpacity, 
+  StyleSheet, 
+  ActivityIndicator, 
+  SafeAreaView, 
+  Platform, 
+  KeyboardAvoidingView, 
+  ScrollView 
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import {jwtDecode} from 'jwt-decode';
+import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
 import Constants from 'expo-constants';
 
-// Project Imports
-import authStorage from '../utils/authStorage';
+// Project imports
 import { useTheme } from '../theme/index';
 import appTheme from '../styles/theme';
-import showToast from '../utils/toast';
+import { showToast } from '../utils/toast';
 import UIButton from '../components/UIButton';
 
 const API_URL = Constants.expoConfig?.extra?.apiUrl;
 
-const SetPINScreen = () => {
+const VerifyPinOtpScreen = () => {
   const navigation = useNavigation<any>();
-  const route = useRoute<RouteProp<any, 'SetPINScreen'>>();
-  const otp = route?.params?.otp;
+  const route = useRoute<RouteProp<any, 'VerifyPinOtpScreen'>>();
+  const { email, bank } = route.params || {};
 
   const { colors: tColors } = useTheme() || { colors: appTheme.colors };
   const styles = useMemo(() => createStyles(tColors), [tColors]);
 
-  const [pin, setPin] = useState('');
-  const [confirmPin, setConfirmPin] = useState('');
-  const [isConfirming, setIsConfirming] = useState(false);
+  const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Auto-trigger validation when 4 digits are entered
-  useEffect(() => {
-    if (pin.length === 4 && !isConfirming) {
-      setTimeout(() => setIsConfirming(true), 300);
-    }
-  }, [pin]);
+  // Formatting function for the badge (if used elsewhere in this screen)
+  const formatBadgeCount = (n: number) => {
+    if (!n || n <= 0) return '';
+    return n >= 20 ? '20+' : String(n);
+  };
 
-  const handleAction = async () => {
-    if (pin !== confirmPin) {
-      showToast('PINs do not match. Try again.');
-      setPin('');
-      setConfirmPin('');
-      setIsConfirming(false);
-      return;
+  const handleVerify = async () => {
+    // Validation for Alphanumeric 6-character code
+    if (!otp || otp.length < 6) {
+      return showToast('Please enter the full 6-character code');
     }
 
     setLoading(true);
     try {
-      const token = await authStorage.getToken();
-      if (!token) throw new Error('Session expired. Please log in.');
-
-      let endpoint = `${API_URL}/api/user/set-pin`;
-      let payload: any = { newPin: pin };
-
-      if (otp) {
-        // Reset mode
-        const decoded: any = jwtDecode(token);
-        const userRes = await axios.get(`${API_URL}/api/users/user/${decoded.id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        endpoint = `${API_URL}/api/user/reset-pin`;
-        payload = { email: userRes.data.email, otp, newPin: pin };
-      }
-
-      await axios.post(endpoint, payload, {
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+      // Server-side OTP verification
+      const response = await axios.post(`${API_URL}/api/user/verify-otp-for-pin-reset`, { 
+        email, 
+        otp: otp.toUpperCase() // Ensure sent as uppercase
       });
-
-      showToast(otp ? 'PIN reset successfully!' : 'PIN set successfully!');
       
-      if (navigation.canGoBack()) {
-        navigation.goBack();
-      } else {
-        navigation.replace('Dashboard');
-      }
-    } catch (err: any) {
-      showToast(err?.response?.data?.message || 'Verification failed.');
-      setIsConfirming(false);
-      setPin('');
-      setConfirmPin('');
+      showToast('Identity verified!');
+      // Navigate to SetPINScreen with the verified OTP
+      navigation.navigate('SetPINScreen', { otp: otp.toUpperCase(), email, bank });
+
+    } catch (e: any) {
+      const errorMsg = e?.response?.data?.message || 'Invalid or expired code.';
+      showToast(errorMsg);
     } finally {
       setLoading(false);
     }
   };
 
-  // Helper to render the PIN "dots"
-  const renderDots = (code: string) => {
-    return [1, 2, 3, 4].map((_, i) => (
-      <View 
-        key={i} 
-        style={[
-          styles.dot, 
-          code.length > i && { backgroundColor: tColors.primary, borderColor: tColors.primary }
-        ]} 
-      />
-    ));
-  };
-
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        <View style={styles.header}>
-          <Ionicons 
-            name={isConfirming ? "checkmark-circle-outline" : "keypad-outline"} 
-            size={48} 
-            color={tColors.primary} 
-          />
-          <Text style={styles.title}>
-            {isConfirming ? "Confirm PIN" : "Set Transaction PIN"}
-          </Text>
-          <Text style={styles.subtitle}>
-            {isConfirming 
-              ? "Re-enter your 4-digit PIN to confirm." 
-              : "This PIN will be required for all withdrawals and transfers."}
-          </Text>
-        </View>
-
-        <View style={styles.dotsContainer}>
-          {renderDots(isConfirming ? confirmPin : pin)}
-        </View>
-
-        {/* Hidden Input to trigger keyboard */}
-        <TextInput
-          autoFocus
-          keyboardType="number-pad"
-          maxLength={4}
-          value={isConfirming ? confirmPin : pin}
-          onChangeText={isConfirming ? setConfirmPin : setPin}
-          style={{ height: 0, opacity: 0 }}
-          caretHidden
-        />
-
-        <View style={styles.footer}>
-          {isConfirming && (
-            <UIButton 
-              title={loading ? "" : "Complete Setup"} 
-              onPress={handleAction}
-              disabled={confirmPin.length !== 4 || loading}
-            >
-              {loading && <ActivityIndicator color="#fff" />}
-            </UIButton>
-          )}
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+        style={{ flex: 1 }}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
           
           <TouchableOpacity 
-            onPress={() => {
-              if (isConfirming) {
-                setIsConfirming(false);
-                setConfirmPin('');
-              } else {
-                navigation.goBack();
-              }
-            }}
-            style={styles.backBtn}
+            style={styles.backIcon} 
+            onPress={() => navigation.goBack()}
           >
-            <Text style={styles.backText}>{isConfirming ? "Change PIN" : "Cancel"}</Text>
+            <Ionicons name="arrow-back" size={24} color={tColors.text} />
           </TouchableOpacity>
-        </View>
-      </View>
+
+          <View style={styles.header}>
+            <View style={styles.iconCircle}>
+              <Ionicons name="shield-checkmark-outline" size={40} color={tColors.primary} />
+            </View>
+            <Text style={styles.title}>Verification Code</Text>
+            <Text style={styles.subtitle}>
+              We sent a code with letters and numbers to{"\n"}
+              <Text style={styles.emailHighlight}>{email || 'your email'}</Text>
+            </Text>
+          </View>
+
+          <View style={styles.inputContainer}>
+            <TextInput
+              value={otp}
+              onChangeText={(text) => setOtp(text.toUpperCase())}
+              // Standard keyboard for Alphanumeric, but optimized
+              keyboardType={Platform.OS === 'ios' ? 'default' : 'visible-password'}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              spellCheck={false}
+              maxLength={6}
+              placeholder="A1B2C3"
+              placeholderTextColor={tColors.muted + '80'}
+              style={styles.otpInput}
+              autoFocus={true}
+              // Required for OS Autofill
+              textContentType="oneTimeCode"
+              autoComplete={Platform.OS === 'android' ? 'sms-otp' : 'one-time-code'}
+            />
+          </View>
+
+          <View style={styles.buttonWrapper}>
+            <UIButton 
+              title={loading ? "" : "Verify & Continue"} 
+              onPress={handleVerify} 
+              disabled={otp.length < 6 || loading} 
+              style={styles.mainButton} 
+            />
+            {loading && (
+              <ActivityIndicator 
+                color="#fff" 
+                style={StyleSheet.absoluteFill} 
+              />
+            )}
+          </View>
+
+          <TouchableOpacity 
+            onPress={() => navigation.goBack()} 
+            style={styles.cancelButton} 
+            disabled={loading}
+          >
+            <Text style={styles.cancelText}>Cancel</Text>
+          </TouchableOpacity>
+
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
 
 const createStyles = (t: any) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: t.background },
-  content: { flex: 1, padding: 24, alignItems: 'center', justifyContent: 'center' },
-  header: { alignItems: 'center', marginBottom: 40 },
-  title: { fontSize: 24, fontWeight: '800', color: t.text, marginTop: 16 },
-  subtitle: { fontSize: 15, color: t.muted, textAlign: 'center', marginTop: 10, paddingHorizontal: 20 },
-  dotsContainer: { flexDirection: 'row', gap: 20, marginBottom: 40 },
-  dot: { 
-    width: 20, height: 20, borderRadius: 10, 
-    borderWidth: 2, borderColor: t.border, backgroundColor: 'transparent' 
+  container: { 
+    flex: 1, 
+    backgroundColor: t.background 
   },
-  footer: { width: '100%', paddingHorizontal: 20 },
-  backBtn: { marginTop: 20, padding: 10, alignItems: 'center' },
-  backText: { color: t.muted, fontWeight: '600' }
+  scrollContent: { 
+    flexGrow: 1, 
+    padding: 24, 
+    justifyContent: 'center' 
+  },
+  backIcon: {
+    position: 'absolute',
+    top: 20,
+    left: 20,
+    padding: 8,
+  },
+  header: { 
+    alignItems: 'center', 
+    marginBottom: 40 
+  },
+  iconCircle: { 
+    width: 90, 
+    height: 90, 
+    borderRadius: 45, 
+    backgroundColor: (t.primary || '#000') + '15', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    marginBottom: 20 
+  },
+  title: { 
+    fontSize: 24, 
+    fontWeight: '800', 
+    color: t.text, 
+    marginBottom: 10 
+  },
+  subtitle: { 
+    fontSize: 15, 
+    color: t.muted, 
+    textAlign: 'center', 
+    lineHeight: 22 
+  },
+  emailHighlight: { 
+    color: t.text, 
+    fontWeight: '700' 
+  },
+  inputContainer: {
+    width: '100%',
+    marginBottom: 30,
+  },
+  otpInput: { 
+    fontSize: 30, 
+    fontWeight: '700', 
+    padding: 18, 
+    borderRadius: 16, 
+    borderWidth: 2, 
+    borderColor: t.border, 
+    backgroundColor: t.surface, 
+    color: t.text, 
+    textAlign: 'center', 
+    letterSpacing: 8,
+  },
+  buttonWrapper: {
+    width: '100%',
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  mainButton: { 
+    height: 56, 
+    borderRadius: 14 
+  },
+  cancelButton: { 
+    marginTop: 20, 
+    alignItems: 'center',
+    padding: 10 
+  },
+  cancelText: { 
+    color: t.muted, 
+    fontWeight: '600', 
+    fontSize: 15 
+  },
 });
 
-export default SetPINScreen;
+export default VerifyPinOtpScreen;

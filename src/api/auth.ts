@@ -58,6 +58,7 @@ export async function loginUser(identifier: string, password: string) {
     }
 
   } catch (error: any) {
+    console.error('[auth] login API call failed:', JSON.stringify(error, null, 2));
     const errorInfo = error?.response?.data || { message: error.message };
     // Map common network error to a friendlier message for the toast
     const rawMessage = (errorInfo && errorInfo.message) ? errorInfo.message : 'Login failed';

@@ -178,12 +178,21 @@ const MyPreSubmissionsScreen = ({ navigation }: any) => {
     if (!selected || cancelReason.length < 3) return showToast('Provide a reason (min 3 chars)');
     setCancelSubmitting(true);
     try {
-      await client.post(`/api/pre-submissions/${selected._id}/cancel`, { reason: cancelReason });
-      setCancelModalVisible(false);
-      fetchItems();
-      showToast('Cancelled successfully');
-    } catch (e) {
-      showToast('Cancel failed');
+      const response = await client.post(`/api/pre-submissions/${selected._id}/cancel`, { reason: cancelReason });
+      // Ensure we check the response data for success, as some HTTP clients might not throw for all non-2xx statuses
+      if (response.data && response.data.success) {
+        setCancelModalVisible(false);
+        fetchItems(); // Refetch the list to show the "Cancelled" status
+        showToast('Cancelled successfully');
+      } else {
+        // Handle cases where the server responds with a success=false message
+        throw new Error(response.data.message || 'Cancellation failed');
+      }
+    } catch (e: any) {
+      // Log the actual error for debugging and show a generic message
+      console.error('Cancellation error:', e);
+      const message = e.response?.data?.message || e.message || 'Cancel failed';
+      showToast(message);
     } finally {
       setCancelSubmitting(false);
     }

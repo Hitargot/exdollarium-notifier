@@ -214,7 +214,8 @@ const WithdrawalFormScreen = () => {
   const handleForgotPin = () => {
     setShowPinModal(false);
     setPin('');
-    navigation.navigate('ResetPinScreen');
+    console.log('Navigating to ResetPinScreen with bank details:', selectedBank);
+    navigation.navigate('ResetPinScreen', { bank: selectedBank });
   };
 
   return (

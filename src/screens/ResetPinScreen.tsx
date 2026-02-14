@@ -3,15 +3,18 @@ import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, SafeAreaVi
 import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
 import Constants from 'expo-constants';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 
 // Project Imports
 import authStorage from '../utils/authStorage';
 import appTheme from '../styles/theme';
 import { useTheme } from '../theme/index';
 import UIButton from '../components/UIButton';
+import { RootStackParamList } from './types';
 
 const API_URL = Constants.expoConfig?.extra?.apiUrl;
+
+type ResetPinScreenRouteProp = RouteProp<RootStackParamList, 'ResetPinScreen'>;
 
 export default function ResetPinScreen() {
     const [loading, setLoading] = useState(false);
@@ -20,6 +23,8 @@ export default function ResetPinScreen() {
     const [errorText, setErrorText] = useState('');
     
     const navigation = useNavigation<any>();
+    const route = useRoute<ResetPinScreenRouteProp>();
+    const { bank } = route.params;
     const { colors: tColors } = useTheme() || { colors: appTheme.colors };
     const styles = useMemo(() => createStyles(tColors), [tColors]);
 
@@ -49,22 +54,20 @@ export default function ResetPinScreen() {
 
         setStatusMessage('sending');
         try {
-            const res = await axios.post(`${API_URL}/api/user/send-otp-for-pin-reset`, { email });
-            // Flexible success check based on your various backend response patterns
-            const isOk = res.data?.success || res.data?.status === 'success' || res.status === 200;
-
-            if (isOk) {
-                setStatusMessage('sent');
-                // Use a short delay or immediate navigation
-                navigation.navigate('VerifyPinOtpScreen', { email });
-            } else {
-                throw new Error(res.data?.message || 'Failed to send code');
-            }
-        } catch (err: any) {
+            const token = await authStorage.getToken();
+            await axios.post(`${API_URL}/api/user/send-otp-for-pin-reset`, { email }, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setStatusMessage('sent');
+            // Pass bank details along to the next screen
+            navigation.navigate('VerifyPinOtpScreen', { bank, email });
+        } catch (e: any) {
+            setErrorText(e?.response?.data?.message || 'Failed to send OTP. Please try again.');
             setStatusMessage('error');
-            setErrorText(err?.response?.data?.message || err.message || 'Network error');
         }
     };
+
+    const canProceed = email && !loading;
 
     return (
         <SafeAreaView style={styles.container}>

@@ -42,8 +42,8 @@ export type RootStackParamList = {
   Tickets: undefined;
   Chat: { ticketId?: string; ticketSubject?: string; initialMessages?: Array<{ id: string; text: string; from: 'user' | 'bot' | string }> } | undefined;
   DevAuthDebug?: undefined;
-  ResetPinScreen: undefined;
-  VerifyPinOtpScreen: undefined;
+  ResetPinScreen: { bank: BankAccount };
+  VerifyPinOtpScreen: { bank: BankAccount; email: string };
   SuccessOnboarding: undefined;
 };
 export type BankAccount = {

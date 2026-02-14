@@ -30,6 +30,16 @@ const SetPINScreen = () => {
   const [confirmPin, setConfirmPin] = useState('');
   const [isConfirming, setIsConfirming] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isPinVisible, setIsPinVisible] = useState(false);
+  const inputRef = React.useRef<TextInput>(null);
+
+  useEffect(() => {
+    // Focus the hidden input when the screen is ready
+    const focusSubscription = navigation.addListener('focus', () => {
+      inputRef.current?.focus();
+    });
+    return focusSubscription;
+  }, [navigation]);
 
   // Auto-trigger validation when 4 digits are entered
   useEffect(() => {
@@ -71,11 +81,14 @@ const SetPINScreen = () => {
 
       showToast(otp ? 'PIN reset successfully!' : 'PIN set successfully!');
       
-      if (navigation.canGoBack()) {
-        navigation.goBack();
+      if (otp) {
+        // If we are in reset mode, navigate back to withdrawal form with bank details
+        navigation.navigate('WithdrawalFormScreen', { selectedBank: route.params?.bank });
       } else {
-        navigation.replace('Dashboard');
+        // Otherwise, just go to the dashboard
+        navigation.navigate('Dashboard');
       }
+
     } catch (err: any) {
       showToast(err?.response?.data?.message || 'Verification failed.');
       setIsConfirming(false);
@@ -86,22 +99,31 @@ const SetPINScreen = () => {
     }
   };
 
-  // Helper to render the PIN "dots"
-  const renderDots = (code: string) => {
-    return [1, 2, 3, 4].map((_, i) => (
-      <View 
-        key={i} 
-        style={[
-          styles.dot, 
-          code.length > i && { backgroundColor: tColors.primary, borderColor: tColors.primary }
-        ]} 
-      />
-    ));
+  const renderPinBoxes = (isConfirm: boolean) => {
+    const value = isConfirm ? confirmPin : pin;
+    const boxes = [];
+    for (let i = 0; i < 4; i++) {
+      const digit = value[i] || '';
+      const isFocused = value.length === i;
+
+      boxes.push(
+        <TouchableOpacity key={i} style={[styles.pinBox, isFocused && styles.pinBoxFocused]} onPress={() => inputRef.current?.focus()}>
+          <Text style={styles.pinText}>
+            {digit ? (isPinVisible ? digit : '●') : ''}
+          </Text>
+        </TouchableOpacity>
+      );
+    }
+    return (
+      <View style={styles.pinBoxContainer}>
+        {boxes}
+      </View>
+    );
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
+      <TouchableOpacity style={styles.content} activeOpacity={1} onPress={() => inputRef.current?.focus()}>
         <View style={styles.header}>
           {(() => {
             const iconName = isConfirming ? 'checkmark-circle-outline' : 'keypad-outline';
@@ -117,23 +139,27 @@ const SetPINScreen = () => {
           </Text>
         </View>
 
-        <View style={styles.dotsContainer}>
-          {renderDots(isConfirming ? confirmPin : pin)}
-        </View>
-
-        {/* Hidden Input to trigger keyboard */}
+        {/* Hidden Input to manage keyboard and state */}
         <TextInput
-          autoFocus
-          keyboardType="number-pad"
-          maxLength={4}
+          ref={inputRef}
+          style={styles.hiddenInput}
           value={isConfirming ? confirmPin : pin}
           onChangeText={isConfirming ? setConfirmPin : setPin}
-          style={{ height: 0, opacity: 0 }}
+          maxLength={4}
+          keyboardType="number-pad"
           caretHidden
+          autoFocus
         />
 
+        {isConfirming ? renderPinBoxes(true) : renderPinBoxes(false)}
+
+        <TouchableOpacity onPress={() => setIsPinVisible(!isPinVisible)} style={styles.eyeIcon}>
+          <Ionicons name={isPinVisible ? 'eye-off-outline' : 'eye-outline'} size={24} color={tColors.muted} />
+          <Text style={styles.eyeText}>{isPinVisible ? 'Hide' : 'Show'} PIN</Text>
+        </TouchableOpacity>
+
         <View style={styles.footer}>
-          {isConfirming && (
+          {isConfirming ? (
             <UIButton 
               title={loading ? "" : "Complete Setup"} 
               onPress={handleAction}
@@ -141,6 +167,12 @@ const SetPINScreen = () => {
             >
               {loading && <ActivityIndicator color="#fff" />}
             </UIButton>
+          ) : (
+            <UIButton
+              title="Continue"
+              onPress={() => setIsConfirming(true)}
+              disabled={pin.length !== 4}
+            />
           )}
           
           <TouchableOpacity 
@@ -157,7 +189,7 @@ const SetPINScreen = () => {
             <Text style={styles.backText}>{isConfirming ? "Change PIN" : "Cancel"}</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 };
@@ -168,10 +200,45 @@ const createStyles = (t: any) => StyleSheet.create({
   header: { alignItems: 'center', marginBottom: 40 },
   title: { fontSize: 24, fontWeight: '800', color: t.text, marginTop: 16 },
   subtitle: { fontSize: 15, color: t.muted, textAlign: 'center', marginTop: 10, paddingHorizontal: 20 },
-  dotsContainer: { flexDirection: 'row', gap: 20, marginBottom: 40 },
-  dot: { 
-    width: 20, height: 20, borderRadius: 10, 
-    borderWidth: 2, borderColor: t.border, backgroundColor: 'transparent' 
+  hiddenInput: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    opacity: 0,
+  },
+  pinBoxContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '70%',
+    marginBottom: 20,
+  },
+  pinBox: {
+    width: 50,
+    height: 60,
+    borderWidth: 1,
+    borderColor: t.border,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: t.surface,
+  },
+  pinBoxFocused: {
+    borderColor: t.primary,
+    borderWidth: 2,
+  },
+  pinText: {
+    fontSize: 24,
+    color: t.text,
+  },
+  eyeIcon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    marginBottom: 20,
+  },
+  eyeText: {
+    color: t.muted,
+    marginLeft: 8,
   },
   footer: { width: '100%', paddingHorizontal: 20 },
   backBtn: { marginTop: 20, padding: 10, alignItems: 'center' },
