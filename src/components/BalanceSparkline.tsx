@@ -78,8 +78,12 @@ const BalanceSparkline: React.FC<Props> = ({
       const net = items.reduce((s, t) => {
         const type = (t.type || '').toLowerCase();
         const amt = Math.abs(Number(t.amount || 0));
-        const isOut = type.includes('sent') || type.includes('withdrawal');
-        return s + (isOut ? -amt : amt);
+        const feeAmt = Math.abs(Number(t.fee || 0));
+        // treat fees/charges as outflows so they reduce the net and count toward 'Out'
+        const isOut = type.includes('sent') || type.includes('withdrawal') || type.includes('fee') || type.includes('charge');
+        // If the transaction carries a fee field (common for withdrawals), include it as an additional outflow
+        const base = isOut ? -amt : amt;
+        return s + base - feeAmt;
       }, 0);
 
       const inflow = items
@@ -92,9 +96,14 @@ const BalanceSparkline: React.FC<Props> = ({
       const outflow = items
         .filter((t) => {
           const type = (t.type || '').toLowerCase();
-          return type.includes('withdrawal') || type.includes('sent') || type.includes('debit');
+          // include withdrawal fees / charges in outflow totals
+          return type.includes('withdrawal') || type.includes('sent') || type.includes('debit') || type.includes('fee') || type.includes('charge');
         })
-        .reduce((s, t) => s + Math.abs(Number(t.amount || 0)), 0);
+        .reduce((s, t) => {
+          const amt = Math.abs(Number(t.amount || 0));
+          const feeAmt = Math.abs(Number(t.fee || 0));
+          return s + amt + feeAmt;
+        }, 0);
 
       return { date: dayDate, in: inflow, out: outflow, net };
     });
