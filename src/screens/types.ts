@@ -27,7 +27,11 @@ export type RootStackParamList = {
   AddBankScreen: undefined;
   SendViaBankScreen: undefined;
   // OTP is optional: screen supports fresh set (no otp) or otp-based reset
-  SetPINScreen: { otp?: string };
+  SetPINScreen: { 
+    otp?: string;
+    nextScreen?: keyof RootStackParamList;
+    nextScreenParams?: { [key: string]: any };
+  };
   SuccessScreen: { message: string; receiptData?: ReceiptData };
   WithdrawalSuccess: { receiptData?: any; message?: string; status?: string; providerReference?: string };
   SendSuccess: { receiptData?: any; message: string; status?: string }; // ✅ add this

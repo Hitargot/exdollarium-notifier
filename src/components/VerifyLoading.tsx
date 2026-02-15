@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, Platform, StyleProp, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import appTheme from '../styles/theme';
@@ -15,6 +15,7 @@ type Props = {
   onAction?: () => void;
   secondaryText?: string;
   small?: boolean;
+  containerStyle?: StyleProp<ViewStyle>;
 };
 
 const VerifyLoading: React.FC<Props> = ({
@@ -25,6 +26,7 @@ const VerifyLoading: React.FC<Props> = ({
   onAction,
   secondaryText,
   small = false,
+  containerStyle,
 }) => {
   const themeCtx = (() => { try { return useTheme(); } catch (e) { return undefined as any; } })();
   const t = themeCtx || appTheme;
@@ -61,8 +63,9 @@ const VerifyLoading: React.FC<Props> = ({
 
   return (
     <View style={[
-        styles.card, 
-        { borderColor: color + '30', backgroundColor: status === 'exists' ? color + '08' : t.colors.surface }
+        styles.card,
+        { borderColor: color + '30', backgroundColor: status === 'exists' ? color + '08' : t.colors.surface },
+        containerStyle,
     ]}> 
       <View style={styles.row}>
         <View style={styles.iconWrap}>{renderIcon()}</View>

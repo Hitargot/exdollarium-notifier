@@ -1,5 +1,5 @@
-import React, { useRef, useEffect, useMemo, useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, ActivityIndicator } from "react-native";
+import React, { useRef, useEffect, useMemo } from "react";
+import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { StackScreenProps } from "@react-navigation/stack";
 import ConfettiCannon from "react-native-confetti-cannon";
@@ -20,7 +20,6 @@ type Props = StackScreenProps<RootStackParamList, "SendSuccess">;
 export default function SendSuccess({ navigation, route }: Props) {
   const { receiptData, message, status = "pending", isPeer: isPeerParam } = route.params || {};
   const confettiRef = useRef<ConfettiCannon | null>(null);
-  const [isNavigating, setIsNavigating] = useState(false);
 
   const { colors: tColors } = useTheme() || { colors: appTheme.colors };
   const styles = useMemo(() => createStyles(tColors), [tColors]);
@@ -35,7 +34,6 @@ export default function SendSuccess({ navigation, route }: Props) {
     }
   }, [status]);
 
-  // UI Configuration based on status
   const config = useMemo(() => {
     const s = status.toLowerCase();
     switch (s) {
@@ -49,7 +47,7 @@ export default function SendSuccess({ navigation, route }: Props) {
       case "pending":
         return {
           icon: "time",
-          color: "#ffbf00", // Gold/Warning
+          color: "#ffbf00",
           title: "Pending...",
           defaultMessage: "Your transfer is being processed by the network."
         };
@@ -71,8 +69,6 @@ export default function SendSuccess({ navigation, route }: Props) {
   }, [status, tColors, isPeerParam]);
 
   const handleDone = () => {
-    if (isNavigating) return;
-    setIsNavigating(true);
     navigation.reset({
       index: 0,
       routes: [{ name: "Dashboard" }],
@@ -84,7 +80,7 @@ export default function SendSuccess({ navigation, route }: Props) {
       {status.toLowerCase() === "completed" && (
         <ConfettiCannon
           count={80}
-          origin={{ x: -10, y: 0 }}
+          origin={{ x: 0, y: 0 }} // Corrected origin for better visibility
           autoStart
           fadeOut
           ref={confettiRef}
@@ -98,9 +94,11 @@ export default function SendSuccess({ navigation, route }: Props) {
         <Text style={styles.message}>{message || config.defaultMessage}</Text>
 
         {receiptData?.amount && (
-            <View style={styles.amountBadge}>
-                <Text style={styles.amountText}>{receiptData.currency || '$'}{receiptData.amount}</Text>
-            </View>
+          <View style={styles.amountBadge}>
+            <Text style={styles.amountText}>
+              {receiptData.currency || '₦'}{receiptData.amount}
+            </Text>
+          </View>
         )}
       </View>
 
@@ -108,32 +106,20 @@ export default function SendSuccess({ navigation, route }: Props) {
         {receiptData && (
           <TouchableOpacity
             style={styles.primaryBtn}
-            disabled={isNavigating}
             onPress={() => {
-              if (isNavigating) return;
-              setIsNavigating(true);
               const sanitized = sanitizeReceipt(receiptData);
               navigation.navigate("Receipt", { receiptData: sanitized });
             }}
           >
-            {isNavigating ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.btnText}>View Receipt</Text>
-            )}
+            <Text style={styles.btnText}>View Receipt</Text>
           </TouchableOpacity>
         )}
 
         <TouchableOpacity 
           style={styles.secondaryBtn} 
           onPress={handleDone}
-          disabled={isNavigating}
         >
-          {isNavigating ? (
-            <ActivityIndicator color={tColors.primary} />
-          ) : (
-            <Text style={styles.secondaryBtnText}>Okay</Text>
-          )}
+          <Text style={styles.secondaryBtnText}>Okay</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -141,29 +127,10 @@ export default function SendSuccess({ navigation, route }: Props) {
 }
 
 const createStyles = (t: any) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: t.background,
-  },
-  content: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 32,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "800",
-    marginTop: 20,
-    color: t.text,
-  },
-  message: {
-    fontSize: 16,
-    textAlign: "center",
-    marginTop: 12,
-    lineHeight: 22,
-    color: t.muted,
-  },
+  container: { flex: 1, backgroundColor: t.background },
+  content: { flex: 1, justifyContent: "center", alignItems: "center", padding: 32 },
+  title: { fontSize: 28, fontWeight: "800", marginTop: 20, color: t.text },
+  message: { fontSize: 16, textAlign: "center", marginTop: 12, lineHeight: 22, color: t.muted },
   amountBadge: {
     marginTop: 24,
     paddingHorizontal: 16,
@@ -173,35 +140,10 @@ const createStyles = (t: any) => StyleSheet.create({
     borderWidth: 1,
     borderColor: t.border
   },
-  amountText: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: t.primary
-  },
-  footer: {
-    padding: 24,
-    gap: 12,
-  },
-  primaryBtn: {
-    backgroundColor: t.primary,
-    height: 56,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  secondaryBtn: {
-    height: 56,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  btnText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  secondaryBtnText: {
-    color: t.primary,
-    fontSize: 16,
-    fontWeight: "700",
-  },
+  amountText: { fontSize: 20, fontWeight: '700', color: t.primary },
+  footer: { padding: 24, gap: 12 },
+  primaryBtn: { backgroundColor: t.primary, height: 56, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  secondaryBtn: { height: 56, alignItems: "center", justifyContent: "center" },
+  btnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  secondaryBtnText: { color: t.primary, fontSize: 16, fontWeight: "700" },
 });

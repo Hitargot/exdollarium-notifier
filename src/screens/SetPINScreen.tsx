@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, 
   SafeAreaView, Keyboard, Platform, TextInput
@@ -9,7 +9,6 @@ import { jwtDecode } from 'jwt-decode';
 import axios from 'axios';
 import Constants from 'expo-constants';
 
-// Project Imports
 import authStorage from '../utils/authStorage';
 import { useTheme } from '../theme/index';
 import appTheme from '../styles/theme';
@@ -31,22 +30,29 @@ const SetPINScreen = () => {
   const [isConfirming, setIsConfirming] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isPinVisible, setIsPinVisible] = useState(false);
-  const inputRef = React.useRef<TextInput>(null);
+  const inputRef = useRef<TextInput>(null);
 
+  // Focus on mount and when navigating back
   useEffect(() => {
-    // Focus the hidden input when the screen is ready
     const focusSubscription = navigation.addListener('focus', () => {
-      inputRef.current?.focus();
+      setTimeout(() => inputRef.current?.focus(), 500);
     });
     return focusSubscription;
   }, [navigation]);
 
-  // Auto-trigger validation when 4 digits are entered
   useEffect(() => {
     if (pin.length === 4 && !isConfirming) {
       setTimeout(() => setIsConfirming(true), 300);
     }
   }, [pin]);
+
+  // Helper to force focus
+  const forceFocus = () => {
+    inputRef.current?.blur(); // Force a reset
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 50);
+  };
 
   const handleAction = async () => {
     if (pin !== confirmPin) {
@@ -54,6 +60,7 @@ const SetPINScreen = () => {
       setPin('');
       setConfirmPin('');
       setIsConfirming(false);
+      forceFocus();
       return;
     }
 
@@ -62,26 +69,32 @@ const SetPINScreen = () => {
       const token = await authStorage.getToken();
       if (!token) throw new Error('Session expired. Please log in.');
 
-      let endpoint = `${API_URL}/api/user/set-pin`;
+  let endpoint = `${API_URL}/api/user/set-pin`;
       let payload: any = { newPin: pin };
 
       if (otp) {
         // Reset mode
+  endpoint = `${API_URL}/api/user/reset-pin`;
         const decoded: any = jwtDecode(token);
         const userRes = await axios.get(`${API_URL}/api/users/user/${decoded.id}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        endpoint = `${API_URL}/api/user/reset-pin`;
         payload = { email: userRes.data.email, otp, newPin: pin };
       }
 
-      await axios.post(endpoint, payload, {
+      console.log('[SetPINScreen] set/reset PIN request', { endpoint, payload });
+      const resp = await axios.post(endpoint, payload, {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
       });
+      console.log('[SetPINScreen] set/reset PIN response', resp.status, resp.data);
 
       showToast(otp ? 'PIN reset successfully!' : 'PIN set successfully!');
       
-      if (otp) {
+      const { nextScreen, nextScreenParams } = route.params || {};
+
+      if (nextScreen) {
+        navigation.navigate(nextScreen, nextScreenParams);
+      } else if (otp) {
         // If we are in reset mode, navigate back to withdrawal form with bank details
         navigation.navigate('WithdrawalFormScreen', { selectedBank: route.params?.bank });
       } else {
@@ -90,7 +103,8 @@ const SetPINScreen = () => {
       }
 
     } catch (err: any) {
-      showToast(err?.response?.data?.message || 'Verification failed.');
+      console.log('[SetPINScreen] set/reset PIN error', (err as any)?.response?.status, (err as any)?.response?.data || err.message || err);
+      showToast((err as any)?.response?.data?.message || 'Verification failed.');
       setIsConfirming(false);
       setPin('');
       setConfirmPin('');
@@ -107,28 +121,46 @@ const SetPINScreen = () => {
       const isFocused = value.length === i;
 
       boxes.push(
-        <TouchableOpacity key={i} style={[styles.pinBox, isFocused && styles.pinBoxFocused]} onPress={() => inputRef.current?.focus()}>
+        <TouchableOpacity 
+          key={i} 
+          activeOpacity={1}
+          style={[styles.pinBox, isFocused && styles.pinBoxFocused]} 
+          onPress={forceFocus}
+        >
           <Text style={styles.pinText}>
             {digit ? (isPinVisible ? digit : '●') : ''}
           </Text>
         </TouchableOpacity>
       );
     }
-    return (
-      <View style={styles.pinBoxContainer}>
-        {boxes}
-      </View>
-    );
+    return <View style={styles.pinBoxContainer}>{boxes}</View>;
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <TouchableOpacity style={styles.content} activeOpacity={1} onPress={() => inputRef.current?.focus()}>
+      {/* Invisible input */}
+      <TextInput
+        ref={inputRef}
+        style={styles.hiddenInput}
+        value={isConfirming ? confirmPin : pin}
+        onChangeText={isConfirming ? setConfirmPin : setPin}
+        maxLength={4}
+        keyboardType="number-pad"
+        caretHidden
+        autoFocus
+      />
+
+      <TouchableOpacity 
+        style={styles.content} 
+        activeOpacity={1} 
+        onPress={forceFocus}
+      >
         <View style={styles.header}>
-          {(() => {
-            const iconName = isConfirming ? 'checkmark-circle-outline' : 'keypad-outline';
-            return <Ionicons name={iconName as any} size={48} color={tColors.primary} />;
-          })()}
+          <Ionicons 
+            name={isConfirming ? 'checkmark-circle-outline' : 'keypad-outline'} 
+            size={48} 
+            color={tColors.primary} 
+          />
           <Text style={styles.title}>
             {isConfirming ? "Confirm PIN" : "Set Transaction PIN"}
           </Text>
@@ -139,19 +171,7 @@ const SetPINScreen = () => {
           </Text>
         </View>
 
-        {/* Hidden Input to manage keyboard and state */}
-        <TextInput
-          ref={inputRef}
-          style={styles.hiddenInput}
-          value={isConfirming ? confirmPin : pin}
-          onChangeText={isConfirming ? setConfirmPin : setPin}
-          maxLength={4}
-          keyboardType="number-pad"
-          caretHidden
-          autoFocus
-        />
-
-        {isConfirming ? renderPinBoxes(true) : renderPinBoxes(false)}
+        {renderPinBoxes(isConfirming)}
 
         <TouchableOpacity onPress={() => setIsPinVisible(!isPinVisible)} style={styles.eyeIcon}>
           <Ionicons name={isPinVisible ? 'eye-off-outline' : 'eye-outline'} size={24} color={tColors.muted} />
@@ -180,6 +200,7 @@ const SetPINScreen = () => {
               if (isConfirming) {
                 setIsConfirming(false);
                 setConfirmPin('');
+                forceFocus();
               } else {
                 navigation.goBack();
               }
@@ -200,18 +221,21 @@ const createStyles = (t: any) => StyleSheet.create({
   header: { alignItems: 'center', marginBottom: 40 },
   title: { fontSize: 24, fontWeight: '800', color: t.text, marginTop: 16 },
   subtitle: { fontSize: 15, color: t.muted, textAlign: 'center', marginTop: 10, paddingHorizontal: 20 },
-  hiddenInput: {
-    position: 'absolute',
-    width: 1,
-    height: 1,
-    opacity: 0,
-  },
+
   pinBoxContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '70%',
     marginBottom: 20,
   },
+  hiddenInput: {
+  position: 'absolute',
+  width: 100, // Larger width makes it "tappable" by the system
+  height: 40,
+  opacity: 0, // Keep it invisible
+  zIndex: -1, // Behind other elements
+  top: 0,
+},
   pinBox: {
     width: 50,
     height: 60,

@@ -267,13 +267,15 @@ const AddBankScreen = ({ navigation }: any) => {
   />
 </View>
 
-          <TouchableOpacity 
-            onPress={checkDuplicates} 
-            disabled={!accountName || submitting} 
-            style={[styles.mainBtn, !accountName && { opacity: 0.5 }]}
-          >
-            <Text style={styles.mainBtnText}>Continue</Text>
-          </TouchableOpacity>
+          {matchingBanks.length === 0 && (
+            <TouchableOpacity 
+              onPress={checkDuplicates} 
+              disabled={!accountName || submitting} 
+              style={[styles.mainBtn, !accountName && { opacity: 0.5 }]}
+            >
+              <Text style={styles.mainBtnText}>Continue</Text>
+            </TouchableOpacity>
+          )}
           
         </ScrollView>
       </KeyboardAvoidingView>
@@ -311,6 +313,8 @@ const AddBankScreen = ({ navigation }: any) => {
             title="Account already exists"
             message="You've already saved this bank."
             actionText="Continue Withdrawal"
+            // Slightly muted, thinner border and smaller radius for this specific case
+            containerStyle={{ borderWidth: 1, borderRadius: 12, borderColor: t.colors?.mutedLight || '#CBD5E1', backgroundColor: t.colors?.surfaceVariant ?? '#F8FAFC' }}
             onAction={() => {
               // Enforce strict matching: require account number + account name + bank to match before auto-selecting.
               try {

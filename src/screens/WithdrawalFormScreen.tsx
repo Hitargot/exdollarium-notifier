@@ -18,7 +18,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import authStorage from '../utils/authStorage';
-import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
+import { useRoute, useNavigation, RouteProp, useFocusEffect } from '@react-navigation/native';
 import Constants from 'expo-constants';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from './types';
@@ -51,6 +51,7 @@ const WithdrawalFormScreen = () => {
   const [amountDisplay, setAmountDisplay] = useState('');
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
+  const [hasPin, setHasPin] = useState(true); // Assume true until checked
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(true);
   const [showPinModal, setShowPinModal] = useState(false);
@@ -61,9 +62,11 @@ const WithdrawalFormScreen = () => {
   
   const WITHDRAW_FEE = 50;
 
-  useEffect(() => {
-    fetchWalletBalance();
-  }, []);
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchWalletBalance();
+    }, [])
+  );
 
   useEffect(() => {
     const numericAmount = Number(amount.replace(/,/g, ''));
@@ -82,11 +85,18 @@ const WithdrawalFormScreen = () => {
       const res = await axios.get(`${API_URL}/api/wallet/data`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      console.log('[WithdrawalForm] /api/wallet/data response:', res.data);
       const balance = res.data.balance || 0;
+      const pinFlag = !!res.data.hasPin;
+      console.log('[WithdrawalForm] hasPin flag:', pinFlag);
       setWalletBalance(balance);
-      await AsyncStorage.setItem('walletBalanceCache', JSON.stringify({ balance, ts: Date.now() }));
+      setHasPin(pinFlag);
+      await AsyncStorage.setItem('walletBalanceCache', JSON.stringify({ balance, ts: Date.now(), hasPin: pinFlag }));
+      return { balance, hasPin: pinFlag };
     } catch (err) {
+  console.log('[WithdrawalForm] fetchWalletBalance error:', (err as any)?.response?.data || err);
       showToast('Could not sync balance');
+      return { balance: null, hasPin: false };
     } finally {
       setLoadingBalance(false);
     }
@@ -100,6 +110,31 @@ const WithdrawalFormScreen = () => {
     if (numeric < 100) return setError('Minimum withdrawal is ₦100');
     if (walletBalance !== null && numeric + WITHDRAW_FEE > walletBalance) {
       return setError('Insufficient funds (including ₦50 fee)');
+    }
+
+    // Re-check server-side PIN status immediately before proceeding.
+    // fetchWalletBalance returns the latest { hasPin } value so we can rely on server state.
+    try {
+      const latest = await fetchWalletBalance();
+      console.log('[WithdrawalForm] handleWithdrawAction - latest:', latest, 'local hasPin:', hasPin);
+      const serverHasPin = latest?.hasPin ?? hasPin;
+      if (!serverHasPin) {
+        console.log('[WithdrawalForm] navigating to SetPINScreen because hasPin is false');
+        return navigation.navigate('SetPINScreen', {
+          nextScreen: 'WithdrawalFormScreen',
+          nextScreenParams: { selectedBank },
+        });
+      }
+    } catch (e) {
+      console.log('[WithdrawalForm] handleWithdrawAction check failed:', e);
+      // If check fails, fall back to current local state
+      if (!hasPin) {
+        console.log('[WithdrawalForm] fallback - navigating to SetPINScreen because local hasPin is false');
+        return navigation.navigate('SetPINScreen', {
+          nextScreen: 'WithdrawalFormScreen',
+          nextScreenParams: { selectedBank },
+        });
+      }
     }
 
     Keyboard.dismiss();

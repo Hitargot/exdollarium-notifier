@@ -54,8 +54,11 @@ const SuccessOnboarding = () => {
     if (step < onboardingSteps.length - 1) {
       setStep(step + 1);
     } else {
-      // After finishing onboarding, return user to login so they can sign in
-      navigation.replace("Login");
+      // After finishing onboarding, navigate to the main part of the app
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Root' }], // 'Root' should be your main authenticated navigator
+      });
     }
   };
 
@@ -99,7 +102,7 @@ const SuccessOnboarding = () => {
           onPress={handleNext}
           style={styles.btn}
         />
-        <TouchableOpacity onPress={() => navigation.replace("Login")} style={styles.skipBtn}>
+        <TouchableOpacity onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Root' }]})} style={styles.skipBtn}>
           <Text style={styles.skipText}>Skip Onboarding</Text>
         </TouchableOpacity>
       </View>

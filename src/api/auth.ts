@@ -65,6 +65,8 @@ export async function loginUser(identifier: string, password: string) {
     const message = rawMessage === 'Network Error'
       ? 'Network Error: unable to reach server. Check your internet connection or server address.'
       : rawMessage;
+    // Log the full error response for better debugging
+    console.error('[auth] login error details:', JSON.stringify(error.response?.data || error.message, null, 2));
     throw new Error(message);
   }
 
