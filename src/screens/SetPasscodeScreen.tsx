@@ -76,7 +76,9 @@ const SetPasscodeScreen: React.FC = () => {
       await showInAppConfirm({ 
         title: 'Security Active', 
         message: 'Your app passcode has been set successfully.', 
-        confirmText: 'Okay' 
+        confirmText: 'Okay',
+        // explicit empty cancelText -> single-button modal (no cancel)
+        cancelText: ''
       });
 
       navigation.reset({ index: 0, routes: [{ name: 'Dashboard' }] });

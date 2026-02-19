@@ -209,7 +209,27 @@ const GetTagScreen: React.FC<Props> = ({ route, navigation }) => {
               <Text style={styles.actionText}>Support</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.shareBtn} onPress={() => Share.share({ message: `Service: ${service.name}\nTag: ${service.tag}` })}>
+            <TouchableOpacity
+              style={styles.shareBtn}
+              onPress={async () => {
+                try {
+                  const s: any = service || {};
+                  const name = s.name || 'N/A';
+                  const tag = s.tag || 'N/A';
+                  const description = s.description || 'N/A';
+                  const fees = s.fees || 'N/A';
+                  const min = s.minAmount ?? 'N/A';
+                  const max = s.maxAmount ?? 'N/A';
+                  const note = s.note || 'N/A';
+                  const status = s.status || 'unknown';
+
+                  const message = `Service: ${name}\nTag: ${tag}\nStatus: ${status}\nDescription: ${description}\nFees: ${fees}\nMin: ${min} | Max: ${max}\nNote: ${note}\n\nShared from Exdollarium App`;
+                  await Share.share({ message });
+                } catch (err) {
+                  console.warn('Share failed', err);
+                }
+              }}
+            >
               <Ionicons name="share-outline" size={20} color={theme.colors.text} />
               <Text style={[styles.actionText, { color: theme.colors.text }]}>Share</Text>
             </TouchableOpacity>

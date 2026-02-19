@@ -248,7 +248,7 @@ const TradeConfirmationScreen = () => {
                 {isPreSubmit && (
                     <View style={styles.inputGroup}>
                         <Text style={styles.label}>Account Username</Text>
-                        <TextInput value={username} onChangeText={setUsername} placeholder="@username" style={styles.textInput} />
+                        <TextInput value={username} onChangeText={setUsername} placeholder="@username" placeholderTextColor={runtimeTheme.colors?.muted || '#94A3B8'} style={styles.textInput} />
                         <Text style={[styles.label, { marginTop: 20 }]}>Hold Duration (Days)</Text>
                         <View style={styles.holdDaysRow}>
                             {[1, 2, 3, 4, 5].map((d) => (
