@@ -207,7 +207,6 @@ export default (ctx: ConfigContext): ExpoConfig => {
             },
           ],
           'expo-secure-store',
-          'expo-web-browser',
         ],
       };
 
