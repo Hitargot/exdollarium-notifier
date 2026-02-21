@@ -1,0 +1,22 @@
+diff --git a/node_modules/@react-native/gradle-plugin/react-native-gradle-plugin/build.gradle.kts b/node_modules/@react-native/gradle-plugin/react-native-gradle-plugin/build.gradle.kts
+index 6e09a3e..36855d0 100644
+--- a/node_modules/@react-native/gradle-plugin/react-native-gradle-plugin/build.gradle.kts
++++ b/node_modules/@react-native/gradle-plugin/react-native-gradle-plugin/build.gradle.kts
+@@ -7,7 +7,7 @@
+ 
+ import org.gradle.api.internal.classpath.ModuleRegistry
+ import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+-import org.gradle.configurationcache.extensions.serviceOf
++import org.gradle.internal.service.ServiceRegistry
+ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+ 
+ plugins {
+@@ -51,7 +51,7 @@ dependencies {
+ 
+   testRuntimeOnly(
+       files(
+-          serviceOf<ModuleRegistry>()
++          (gradle as org.gradle.api.internal.GradleInternal).services.get(ModuleRegistry::class.java)
+               .getModule("gradle-tooling-api-builders")
+               .classpath
+               .asFiles
