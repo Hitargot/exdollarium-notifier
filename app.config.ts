@@ -213,20 +213,6 @@ export default (ctx: ConfigContext): ExpoConfig => {
 
   let config: any = Object.assign({}, baseConfig, managedOnlyConfig);
 
-  // Ensure the datetimepicker plugin is declared so Expo/Prebuild/EAS won't warn
-  // about missing plugin configuration. Plugins can be strings or [string, options].
-  config.plugins = config.plugins || [];
-  const pluginName = '@react-native-community/datetimepicker';
-  const hasPlugin = (config.plugins || []).some((p: any) => {
-    if (!p) return false;
-    if (typeof p === 'string') return p === pluginName;
-    if (Array.isArray(p) && typeof p[0] === 'string') return p[0] === pluginName;
-    return false;
-  });
-  if (!hasPlugin) {
-    config.plugins.push(pluginName);
-  }
-
   config = withCustomAndroidManifest(config);
 
   return config as ExpoConfig;
