@@ -7,6 +7,7 @@ import {
     ScrollView,
     Image,
     Linking,
+    Share,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -18,7 +19,7 @@ import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
 import { RootStackParamList } from './types';
 import { Asset } from 'expo-asset';
 import Constants from 'expo-constants';
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 import { mapToUiStatus, highlightColor } from '../utils/statusMapper';
 import showToast from '../utils/toast';
 import ScreenHeader from '../components/ScreenHeader';
@@ -100,15 +101,66 @@ const ReceiptScreen = () => {
 
     const handleSharePdf = async () => {
         try {
-        const asset = Asset.fromModule(require('../../assets/t1f18p.jpg'));
-        const watermarkAsset = Asset.fromModule(require('../../assets/photo_2026-01-20_04-34-08-removebg-preview.png'));
-        await Promise.all([asset.downloadAsync(), watermarkAsset.downloadAsync()]);
-        const base64 = await FileSystem.readAsStringAsync(asset.localUri || asset.uri, { encoding: 'base64' });
-        const watermarkBase64 = await FileSystem.readAsStringAsync(watermarkAsset.localUri || watermarkAsset.uri, { encoding: 'base64' });
-        const html = buildReceiptHtml(receiptData, `data:image/png;base64,${base64}`, `data:image/png;base64,${watermarkBase64}`);
-            const { uri } = await Print.printToFileAsync({ html });
-            await Sharing.shareAsync(uri);
-        } catch (err) { showToast('Could not generate PDF'); }
+            const asset = Asset.fromModule(require('../../assets/t1f18p.jpg'));
+            const watermarkAsset = Asset.fromModule(require('../../assets/photo_2026-01-20_04-34-08-removebg-preview.png'));
+            await Promise.all([asset.downloadAsync(), watermarkAsset.downloadAsync()]);
+            const base64 = await FileSystem.readAsStringAsync(asset.localUri || asset.uri, { encoding: 'base64' });
+            const watermarkBase64 = await FileSystem.readAsStringAsync(watermarkAsset.localUri || watermarkAsset.uri, { encoding: 'base64' });
+            const html = buildReceiptHtml(receiptData, `data:image/png;base64,${base64}`, `data:image/png;base64,${watermarkBase64}`);
+
+            // generate PDF via Print
+            let uri: string | undefined;
+            try {
+                const res = await Print.printToFileAsync({ html });
+                uri = res?.uri;
+            } catch (e) {
+                console.warn('Print.printToFileAsync failed', e);
+                uri = undefined;
+            }
+
+            if (uri) {
+                // prefer expo-sharing when available
+                try {
+                    if (Sharing && Sharing.isAvailableAsync && (await Sharing.isAvailableAsync())) {
+                        await Sharing.shareAsync(uri);
+                        try { if (uri && FileSystem && FileSystem.deleteAsync) await FileSystem.deleteAsync(uri, { idempotent: true }); } catch (_) {}
+                        return;
+                    }
+                } catch (e) {
+                    console.warn('expo-sharing check/share failed', e);
+                }
+
+                // try converting to content URI (Android) if supported
+                try {
+                    if (FileSystem && (FileSystem as any).getContentUriAsync) {
+                        try {
+                            const contentUri = await (FileSystem as any).getContentUriAsync(uri);
+                            await Share.share({ url: contentUri, title: 'Receipt PDF' } as any);
+                            try { if (uri && FileSystem && FileSystem.deleteAsync) await FileSystem.deleteAsync(uri, { idempotent: true }); } catch (_) {}
+                            return;
+                        } catch (e) {
+                            console.warn('getContentUriAsync failed', e);
+                        }
+                    }
+                } catch (e) { console.warn('getContentUriAsync check failed', e); }
+
+                // last-resort: try RN Share with file URI
+                try {
+                    await Share.share({ url: uri, title: 'Receipt PDF' } as any);
+                    try { if (uri && FileSystem && FileSystem.deleteAsync) await FileSystem.deleteAsync(uri, { idempotent: true }); } catch (_) {}
+                    return;
+                } catch (e) {
+                    console.warn('Share fallback failed', e);
+                }
+            }
+
+            // if we get here, PDF generation or sharing failed; give user feedback
+            console.warn('Receipt PDF export unavailable. Print:', !!Print, 'FileSystem:', !!FileSystem, 'Sharing:', !!Sharing);
+            showToast('Could not generate PDF. You can save or share the receipt image instead.');
+        } catch (err) {
+            console.warn('handleSharePdf failed', err);
+            showToast('Could not generate PDF');
+        }
     };
 
     // Capture the receipt view as a PNG and return the file URI.
