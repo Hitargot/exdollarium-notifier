@@ -1,16 +1,17 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-  <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
-    <item name="android:enforceNavigationBarContrast" tools:targetApi="29">true</item>
+  <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
+    <item name="android:textColor">@android:color/black</item>
+    <item name="android:editTextStyle">@style/ResetEditText</item>
     <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
-    <!-- Keep the window background the same as the launch splash to avoid a
-         brief black flash between the native launch screen and the React
-         Native activity content. Uses the splash drawable which composes the
-         background color and centered logo. -->
-    <item name="android:windowBackground">@drawable/ic_launcher_background</item>
     <item name="colorPrimary">@color/colorPrimary</item>
-  <item name="android:statusBarColor">@color/splashscreen_background</item>
+    <item name="android:statusBarColor">#ffffff</item>
+  </style>
+  <style name="ResetEditText" parent="@android:style/Widget.EditText">
+    <item name="android:padding">0dp</item>
+    <item name="android:textColorHint">#c8c8c8</item>
+    <item name="android:textColor">@android:color/black</item>
   </style>
   <style name="Theme.App.SplashScreen" parent="AppTheme">
-    <item name="android:windowBackground">@drawable/ic_launcher_background</item>
+    <item name="android:windowBackground">@drawable/splashscreen</item>
   </style>
 </resources>

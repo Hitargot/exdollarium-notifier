@@ -1,9 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!--
-    Notification small icon wrapper.
-    Use the generated white-on-transparent mipmap notification_icon.png so Android
-    displays a monochrome small icon in the status bar.
--->
 <bitmap xmlns:android="http://schemas.android.com/apk/res/android"
-        android:src="@mipmap/notification_icon"
-        android:gravity="center" />
+  android:src="@mipmap/notification_icon"
+  android:tint="@android:color/white" />
