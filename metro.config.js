@@ -10,7 +10,12 @@ const config = getDefaultConfig(__dirname);
 // points to non-existent ESM entry files inside some dependencies.
 config.resolver = config.resolver || {};
 config.resolver.extraNodeModules = Object.assign({}, config.resolver.extraNodeModules, {
-	'react-async-hook': path.resolve(__dirname, 'node_modules', 'react-async-hook'),
+        'react-async-hook': path.resolve(__dirname, 'node_modules', 'react-async-hook'),
 });
+
+// Enable package.json "exports" field resolution so that packages like axios
+// use the correct "react-native" build instead of the Node.js build.
+config.resolver.unstable_enablePackageExports = true;
+config.resolver.unstable_conditionNames = ['react-native', 'require', 'default'];
 
 module.exports = config;

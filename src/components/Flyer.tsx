@@ -1,9 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Linking, Image, ActivityIndicator, Dimensions, ViewStyle, StyleProp, FlatList, ViewToken, Animated } from 'react-native';
-// downloadAsync from the default expo-file-system package is deprecated in
-// newer Expo SDKs. Import the legacy API to keep behavior stable or migrate
-// to the new File/Directory classes as recommended by Expo docs.
-import * as FileSystem from 'expo-file-system/legacy';
+// downloadAsync from the default expo-file-system package is the standard API.
+import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import staticTheme from '../styles/theme';
