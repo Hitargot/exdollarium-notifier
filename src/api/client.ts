@@ -241,4 +241,10 @@ export const getConfirmationReceipt = async (id: string) => {
   return res.data;
 };
 
+/** Fetch all services (includes exchangeRates: { usd, eur, gbp }) */
+export const getServices = async () => {
+  const res = await client.get('/api/services');
+  return res.data;
+};
+
 export default client;

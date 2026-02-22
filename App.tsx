@@ -1,4 +1,6 @@
 ﻿import React, { useEffect, useRef } from 'react';
+import ErrorBoundary from './src/components/ErrorBoundary';
+import OfflineBanner from './src/components/OfflineBanner';
 import * as Notifications from 'expo-notifications';  // Expo Notifications
 import Constants from 'expo-constants';
 // NOTE: react-native-firebase modules are loaded dynamically inside setup()
@@ -705,6 +707,7 @@ export default function App() {
   // avoid unmounting the tree while theme initializes.
 
   return (
+    <ErrorBoundary>
     <ThemeProvider>
       {initialRoute === undefined ? (
         // While the initial route is still being decided, show the static
@@ -734,7 +737,9 @@ export default function App() {
           ) : null}
         </PreferencesProvider>
       )}
+      <OfflineBanner />
     </ThemeProvider>
+    </ErrorBoundary>
   );
 }
 // Store a module-scoped pending value so callers earlier in the file can
