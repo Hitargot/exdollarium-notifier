@@ -221,12 +221,15 @@ const LoginScreen = () => {
                     </View>
                 </View>
 
-                <TouchableOpacity 
-                    style={styles.legalLinks}
-                    onPress={() => Linking.openURL('https://exdollarium-6f0f5aab6a7d.herokuapp.com/privacy-policy')}
-                >
-                    <Text style={styles.legalText}>Privacy Policy • Terms of Service</Text>
-                </TouchableOpacity>
+                <View style={styles.legalLinks}>
+                    <TouchableOpacity onPress={() => Linking.openURL('https://exdollarium-6f0f5aab6a7d.herokuapp.com/privacy-policy')}>
+                        <Text style={styles.legalText}>Privacy Policy</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.legalSep}> • </Text>
+                    <TouchableOpacity onPress={() => Linking.openURL('https://exdollarium-6f0f5aab6a7d.herokuapp.com/terms')}>
+                        <Text style={styles.legalText}>Terms of Service</Text>
+                    </TouchableOpacity>
+                </View>
             </ScrollView>
         </KeyboardAvoidingView>
     );
@@ -363,11 +366,18 @@ const createStyles = (t: any) => StyleSheet.create({
     },
     legalLinks: {
         marginTop: 30,
+        flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'center',
     },
     legalText: {
         fontSize: 12,
         color: 'rgba(255,255,255,0.6)',
+        textDecorationLine: 'underline',
+    },
+    legalSep: {
+        fontSize: 12,
+        color: 'rgba(255,255,255,0.4)',
     },
 });
 
