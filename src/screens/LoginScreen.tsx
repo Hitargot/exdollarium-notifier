@@ -10,6 +10,7 @@ import {
     KeyboardAvoidingView,
     Platform,
     ScrollView,
+    Linking,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
@@ -222,7 +223,7 @@ const LoginScreen = () => {
 
                 <TouchableOpacity 
                     style={styles.legalLinks}
-                    onPress={() => showToast('Terms and Privacy policy updated 2024.')}
+                    onPress={() => Linking.openURL('https://exdollarium-6f0f5aab6a7d.herokuapp.com/privacy-policy')}
                 >
                     <Text style={styles.legalText}>Privacy Policy • Terms of Service</Text>
                 </TouchableOpacity>

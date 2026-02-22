@@ -16,30 +16,32 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 
 const { width, height } = Dimensions.get('window');
-// Adjusted for better balance between text and image
-const IMAGE_SIZE = Math.round(width * 0.85); 
+const IMAGE_SIZE = Math.round(width * 0.55);
 
 const SLIDES = [
   {
     key: 'one',
     title: 'Instant Exchange,\nZero Stress',
     subtitle: 'Convert PayPal, Payoneer and crypto to Naira seamlessly — with fast processing and instant payouts.',
-    // Premium 3D Isometric Illustration for Exchange/Wallets
-    image: { uri: 'https://img.freepik.com/free-vector/digital-wallet-concept-illustration_114360-7561.jpg' },
+    icon: 'swap-horizontal' as const,
+    iconBg: '#1E3A8A',
+    iconColor: '#60A5FA',
   },
   {
     key: 'two',
     title: 'Fast. Secure.\nReliable.',
     subtitle: 'Every transaction is protected with secure verification and handled with care from start to finish.',
-    // Premium Shield/Security illustration
-    image: { uri: 'https://img.freepik.com/free-vector/safe-concept-illustration_114360-5207.jpg' },
+    icon: 'shield-checkmark' as const,
+    iconBg: '#1E3A8A',
+    iconColor: '#34D399',
   },
   {
     key: 'three',
     title: 'Stay Updated,\nAlways',
     subtitle: 'Get real-time notifications for transaction status, confirmations, and payouts — no guesswork.',
-    // Premium Notification/Mobile interaction illustration
-    image: { uri: 'https://img.freepik.com/free-vector/push-notifications-concept-illustration_114360-4730.jpg' },
+    icon: 'notifications' as const,
+    iconBg: '#1E3A8A',
+    iconColor: '#FBBF24',
     final: true,
   },
 ];
@@ -112,16 +114,18 @@ export default function IntroScreen() {
           {SLIDES.map(s => (
             <View key={s.key} style={styles.slide}>
               <View style={styles.imageContainer}>
-                <Animated.Image
-                  source={s.image}
+                <Animated.View
                   style={[
-                    styles.illustration,
+                    styles.iconCircle,
+                    { backgroundColor: s.iconBg },
                     {
                       opacity: imageAnim,
                       transform: [{ scale: imageAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }],
                     },
                   ]}
-                />
+                >
+                  <Ionicons name={s.icon} size={IMAGE_SIZE * 0.45} color={s.iconColor} />
+                </Animated.View>
               </View>
               <View style={styles.textContainer}>
                 <Text style={styles.title}>{s.title}</Text>
@@ -176,11 +180,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center', 
     alignItems: 'center' 
   },
-  illustration: { 
-    width: IMAGE_SIZE, 
-    height: IMAGE_SIZE, 
-    resizeMode: 'contain',
-    borderRadius: 20 // Clean edges
+  iconCircle: {
+    width: IMAGE_SIZE,
+    height: IMAGE_SIZE,
+    borderRadius: IMAGE_SIZE / 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
   },
   textContainer: { alignItems: 'center', marginTop: 20 },
   title: { fontSize: 32, fontWeight: '900', color: '#fff', textAlign: 'center', lineHeight: 38 },
