@@ -4,7 +4,6 @@ import {
   Text,
   Animated,
   StyleSheet,
-  Dimensions,
 } from 'react-native';
 import { getServices } from '../api/client';
 
@@ -15,16 +14,11 @@ interface RateItem {
   gbp?: number;
 }
 
-const SCROLL_SPEED = 60; // pixels per second
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const SCROLL_SPEED = 45; // pixels per second — lower = slower
 
-/**
- * Horizontally scrolling FX rate ticker shown on the Dashboard.
- * Fetches exchange rates from /api/services and auto-scrolls them.
- */
 export default function RateTicker() {
   const [rates, setRates] = useState<RateItem[]>([]);
-  const [contentWidth, setContentWidth] = useState(0);
+  const [singleWidth, setSingleWidth] = useState(0);
   const scrollX = useRef(new Animated.Value(0)).current;
   const animRef = useRef<Animated.CompositeAnimation | null>(null);
 
@@ -33,8 +27,9 @@ export default function RateTicker() {
     getServices()
       .then((data: any[]) => {
         if (!mounted) return;
+        // Show ALL services that have exchange rate data, regardless of status
         const items: RateItem[] = (data || [])
-          .filter((s: any) => s?.status === 'valid' && s?.exchangeRates)
+          .filter((s: any) => s?.exchangeRates)
           .map((s: any) => ({
             label: s.name || s.tag || 'Service',
             usd: s.exchangeRates?.usd,
@@ -43,39 +38,48 @@ export default function RateTicker() {
           }));
         setRates(items);
       })
-      .catch(() => {/* silently ignore if rates fail */});
+      .catch(() => {});
     return () => { mounted = false; };
   }, []);
 
-  // Start/restart animation whenever content width changes
   useEffect(() => {
-    if (contentWidth <= SCREEN_WIDTH) return;
-    if (animRef.current) animRef.current.stop();
-
-    const duration = (contentWidth / SCROLL_SPEED) * 1000;
+    if (singleWidth <= 0) return;
+    if (animRef.current) {
+      animRef.current.stop();
+      animRef.current = null;
+    }
     scrollX.setValue(0);
 
+    const duration = (singleWidth / SCROLL_SPEED) * 1000;
+
+    // Seamless loop: scroll 0 → -singleWidth then reset to 0.
+    // Because we render items twice (doubled), at -singleWidth the view looks
+    // identical to 0, so the jump is invisible.
     animRef.current = Animated.loop(
       Animated.timing(scrollX, {
-        toValue: -contentWidth,
+        toValue: -singleWidth,
         duration,
         useNativeDriver: true,
-        // linear easing
         easing: (t) => t,
       }),
     );
     animRef.current.start();
 
-    return () => { if (animRef.current) animRef.current.stop(); };
-  }, [contentWidth]);
+    return () => {
+      if (animRef.current) {
+        animRef.current.stop();
+        animRef.current = null;
+      }
+    };
+  }, [singleWidth]);
 
   if (rates.length === 0) return null;
 
   const formatRate = (n?: number) =>
     n !== undefined ? `\u20A6${n.toLocaleString()}` : '-';
 
-  // Duplicate items so the scroll loops seamlessly
-  const items = [...rates, ...rates];
+  // Render the list twice so the loop is seamless
+  const doubled = [...rates, ...rates];
 
   return (
     <View style={styles.wrapper}>
@@ -85,21 +89,25 @@ export default function RateTicker() {
       <View style={styles.track}>
         <Animated.View
           style={[styles.row, { transform: [{ translateX: scrollX }] }]}
-          onLayout={(e) => setContentWidth(e.nativeEvent.layout.width / 2)}
+          onLayout={(e) => {
+            const full = e.nativeEvent.layout.width;
+            const half = Math.round(full / 2);
+            if (half > 0 && half !== singleWidth) {
+              setSingleWidth(half);
+            }
+          }}
         >
-          {items.map((item, i) => (
+          {doubled.map((item, i) => (
             <View key={i} style={styles.rateItem}>
               <Text style={styles.serviceName}>{item.label}</Text>
-              <Text style={styles.rateText}>
-                {`USD ${formatRate(item.usd)}`}
-              </Text>
+              <Text style={styles.rateText}>{`  USD ${formatRate(item.usd)}`}</Text>
               {item.eur !== undefined && (
-                <Text style={styles.rateText}>{`EUR ${formatRate(item.eur)}`}</Text>
+                <Text style={styles.rateText}>{`  EUR ${formatRate(item.eur)}`}</Text>
               )}
               {item.gbp !== undefined && (
-                <Text style={styles.rateText}>{`GBP ${formatRate(item.gbp)}`}</Text>
+                <Text style={styles.rateText}>{`  GBP ${formatRate(item.gbp)}`}</Text>
               )}
-              <Text style={styles.separator}>{'|'}</Text>
+              <Text style={styles.separator}> {'  |  '} </Text>
             </View>
           ))}
         </Animated.View>
@@ -142,7 +150,6 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingLeft: 10,
   },
   rateItem: {
     flexDirection: 'row',
