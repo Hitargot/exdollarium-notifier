@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+﻿import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ interface RateItem {
   gbp?: number;
 }
 
-const SCROLL_SPEED = 45; // pixels per second — lower = slower
+const SCROLL_SPEED = 45; // pixels per second
 
 export default function RateTicker() {
   const [rates, setRates] = useState<RateItem[]>([]);
@@ -27,7 +27,6 @@ export default function RateTicker() {
     getServices()
       .then((data: any[]) => {
         if (!mounted) return;
-        // Show ALL services that have exchange rate data, regardless of status
         const items: RateItem[] = (data || [])
           .filter((s: any) => s?.exchangeRates)
           .map((s: any) => ({
@@ -52,9 +51,6 @@ export default function RateTicker() {
 
     const duration = (singleWidth / SCROLL_SPEED) * 1000;
 
-    // Seamless loop: scroll 0 → -singleWidth then reset to 0.
-    // Because we render items twice (doubled), at -singleWidth the view looks
-    // identical to 0, so the jump is invisible.
     animRef.current = Animated.loop(
       Animated.timing(scrollX, {
         toValue: -singleWidth,
@@ -78,39 +74,52 @@ export default function RateTicker() {
   const formatRate = (n?: number) =>
     n !== undefined ? `\u20A6${n.toLocaleString()}` : '-';
 
-  // Render the list twice so the loop is seamless
-  const doubled = [...rates, ...rates];
+  const renderItems = (items: RateItem[]) =>
+    items.map((item, i) => (
+      <View key={i} style={styles.rateItem}>
+        <Text style={styles.serviceName}>{item.label}{'  '}</Text>
+        <Text style={styles.rateText}>{`USD ${formatRate(item.usd)}`}</Text>
+        {item.eur !== undefined && (
+          <Text style={styles.rateText}>{`  EUR ${formatRate(item.eur)}`}</Text>
+        )}
+        {item.gbp !== undefined && (
+          <Text style={styles.rateText}>{`  GBP ${formatRate(item.gbp)}`}</Text>
+        )}
+        <Text style={styles.separator}>{'     |     '}</Text>
+      </View>
+    ));
 
   return (
     <View style={styles.wrapper}>
       <View style={styles.labelBox}>
         <Text style={styles.labelText}>RATES</Text>
       </View>
-      <View style={styles.track}>
-        <Animated.View
-          style={[styles.row, { transform: [{ translateX: scrollX }] }]}
+
+      {/* Invisible row used ONLY to measure single-copy width accurately.
+          It lives outside the clipped track so it can expand freely. */}
+      <View style={styles.measureContainer} pointerEvents="none">
+        <View
+          style={styles.measureRow}
           onLayout={(e) => {
-            const full = e.nativeEvent.layout.width;
-            const half = Math.round(full / 2);
-            if (half > 0 && half !== singleWidth) {
-              setSingleWidth(half);
-            }
+            const w = Math.ceil(e.nativeEvent.layout.width);
+            if (w > 0 && w !== singleWidth) setSingleWidth(w);
           }}
         >
-          {doubled.map((item, i) => (
-            <View key={i} style={styles.rateItem}>
-              <Text style={styles.serviceName}>{item.label}</Text>
-              <Text style={styles.rateText}>{`  USD ${formatRate(item.usd)}`}</Text>
-              {item.eur !== undefined && (
-                <Text style={styles.rateText}>{`  EUR ${formatRate(item.eur)}`}</Text>
-              )}
-              {item.gbp !== undefined && (
-                <Text style={styles.rateText}>{`  GBP ${formatRate(item.gbp)}`}</Text>
-              )}
-              <Text style={styles.separator}> {'  |  '} </Text>
-            </View>
-          ))}
-        </Animated.View>
+          {renderItems(rates)}
+        </View>
+      </View>
+
+      <View style={styles.track}>
+        {singleWidth > 0 && (
+          <Animated.View
+            style={[styles.row, { transform: [{ translateX: scrollX }] }]}
+          >
+            {/* Render twice: when first copy scrolls off, second copy is already
+                in view 鈥?at -singleWidth it looks identical to position 0 */}
+            {renderItems(rates)}
+            {renderItems(rates)}
+          </Animated.View>
+        )}
       </View>
     </View>
   );
@@ -141,6 +150,21 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 1,
   },
+  // Sits on top of the ticker (absolute), invisible, unconstrained width
+  measureContainer: {
+    position: 'absolute',
+    opacity: 0,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    overflow: 'visible',
+  },
+  measureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    position: 'absolute',
+  },
   track: {
     flex: 1,
     overflow: 'hidden',
@@ -154,22 +178,18 @@ const styles = StyleSheet.create({
   rateItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 4,
   },
   serviceName: {
     color: '#a0b4ff',
     fontSize: 11,
     fontWeight: '700',
-    marginRight: 5,
   },
   rateText: {
     color: '#e2e8f0',
     fontSize: 11,
-    marginRight: 5,
   },
   separator: {
     color: '#4a5568',
-    fontSize: 14,
-    marginRight: 10,
+    fontSize: 12,
   },
 });
