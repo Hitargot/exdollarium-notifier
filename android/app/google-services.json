@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "748549990165",
+    "firebase_url": "https://exdollarium-3d474-default-rtdb.firebaseio.com",
+    "project_id": "exdollarium-3d474",
+    "storage_bucket": "exdollarium-3d474.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:748549990165:android:9d35b6d76248c6a9f2eb1c",
+        "android_client_info": {
+          "package_name": "com.exdollarium.notifier"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCjlI4EVcfsF81GCvCBQcw07yxAvxmH0_g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
