@@ -34,7 +34,7 @@ export default function RateTicker() {
       .then((data: any[]) => {
         if (!mounted) return;
         const items: RateItem[] = (data || [])
-          .filter((s: any) => s?.status === 'active' && s?.exchangeRates)
+          .filter((s: any) => s?.status === 'valid' && s?.exchangeRates)
           .map((s: any) => ({
             label: s.name || s.tag || 'Service',
             usd: s.exchangeRates?.usd,
@@ -72,7 +72,7 @@ export default function RateTicker() {
   if (rates.length === 0) return null;
 
   const formatRate = (n?: number) =>
-    n !== undefined ? `₦${n.toLocaleString()}` : '—';
+    n !== undefined ? `\u20A6${n.toLocaleString()}` : '-';
 
   // Duplicate items so the scroll loops seamlessly
   const items = [...rates, ...rates];
@@ -99,7 +99,7 @@ export default function RateTicker() {
               {item.gbp !== undefined && (
                 <Text style={styles.rateText}>{`GBP ${formatRate(item.gbp)}`}</Text>
               )}
-              <Text style={styles.separator}>•</Text>
+              <Text style={styles.separator}>{'|'}</Text>
             </View>
           ))}
         </Animated.View>

@@ -1,22 +1,40 @@
 {
   "project_info": {
-    "project_number": "748549990165",
-    "firebase_url": "https://exdollarium-3d474-default-rtdb.firebaseio.com",
-    "project_id": "exdollarium-3d474",
-    "storage_bucket": "exdollarium-3d474.firebasestorage.app"
+    "project_number": "197715073916",
+    "project_id": "exdollarium-ef219",
+    "storage_bucket": "exdollarium-ef219.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:748549990165:android:9d35b6d76248c6a9f2eb1c",
+        "mobilesdk_app_id": "1:197715073916:android:f2470bb1721316e605a2f9",
         "android_client_info": {
-          "package_name": "com.exdollarium.notifier"
+          "package_name": "com.exdollarium.exdollarium"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyCjlI4EVcfsF81GCvCBQcw07yxAvxmH0_g"
+          "current_key": "AIzaSyDdBIcFZkR9ilcOy4G0gXepjon5CHGEXOI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:197715073916:android:8c91128240bc3d0205a2f9",
+        "android_client_info": {
+          "package_name": "com.omarlareef.exdollarium"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDdBIcFZkR9ilcOy4G0gXepjon5CHGEXOI"
         }
       ],
       "services": {
