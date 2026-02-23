@@ -20,6 +20,7 @@ import OtpVerificationScreen from './src/screens/OtpVerificationScreen';
 import ResetOtpScreen from './src/screens/ResetOtpScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 import SuccessOnboarding from './src/screens/SuccessOnboarding';
+import KYCScreen from './src/screens/KYCScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import ProfileScreen from './src/Dashboardcomponent/ProfileScreen';
 import GetTagScreen from './src/Dashboardcomponent/GetTagScreen';
@@ -134,6 +135,7 @@ export default function InnerApp({ initialRouteProp, navigationRef: parentNavRef
                   <Stack.Screen name="Signup" component={SignupScreen} />
                   <Stack.Screen name="OtpVerification" component={OtpVerificationScreen} />
                   <Stack.Screen name="SuccessOnboarding" component={SuccessOnboarding} />
+                  <Stack.Screen name="KYC" component={KYCScreen} />
                   <Stack.Screen name="ResetOtp" component={ResetOtpScreen} />
                   <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
                   <Stack.Screen name="Dashboard" component={DashboardScreen} />

@@ -247,4 +247,23 @@ export const getServices = async () => {
   return res.data;
 };
 
+// ─── KYC ──────────────────────────────────────────────────────────────────────
+
+/** Get the current user's KYC status. */
+export const getKYCStatus = async () => {
+  const res = await client.get('/api/kyc/status');
+  return res.data; // { kyc: { status, idType, idNumber, ... } }
+};
+
+/**
+ * Submit KYC documents.
+ * @param formData  FormData with fields: idType, idNumber, document (file), selfie (file)
+ */
+export const submitKYC = async (formData: FormData) => {
+  const res = await client.post('/api/kyc/submit', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return res.data;
+};
+
 export default client;

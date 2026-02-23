@@ -1321,6 +1321,54 @@ const DashboardScreen = () => {
         {/* Live FX Rate Ticker */}
         <RateTicker />
 
+        {/* KYC Verification Banner — shown until user is approved */}
+        {profile && profile?.kyc?.status !== "approved" && (
+          <TouchableOpacity
+            style={[
+              styles.kycBanner,
+              {
+                backgroundColor:
+                  profile?.kyc?.status === "pending"
+                    ? "#d97706"
+                    : profile?.kyc?.status === "rejected"
+                    ? "#dc2626"
+                    : t.colors.primary,
+              },
+            ]}
+            onPress={() => navigation.navigate("KYC" as any)}
+            activeOpacity={0.85}
+          >
+            <Ionicons
+              name={
+                profile?.kyc?.status === "pending"
+                  ? "time-outline"
+                  : profile?.kyc?.status === "rejected"
+                  ? "close-circle-outline"
+                  : "shield-outline"
+              }
+              size={18}
+              color="#fff"
+            />
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text style={styles.kycBannerTitle}>
+                {profile?.kyc?.status === "pending"
+                  ? "KYC Under Review"
+                  : profile?.kyc?.status === "rejected"
+                  ? "KYC Rejected — Resubmit"
+                  : "Complete KYC Verification"}
+              </Text>
+              <Text style={styles.kycBannerSub}>
+                {profile?.kyc?.status === "pending"
+                  ? "Your documents are being reviewed (24–48 hrs)"
+                  : profile?.kyc?.status === "rejected"
+                  ? "Tap to see rejection reason and resubmit"
+                  : "Verify your identity to unlock all features"}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color="#fff" />
+          </TouchableOpacity>
+        )}
+
         {/* STEP 2: MAIN ACTIONS (Joined Pre-submissions here) */}
         <View style={styles.actionsRow}>
           <ActionButton
@@ -1548,6 +1596,26 @@ const createStyles = (t: any) =>
       flexDirection: "row",
       justifyContent: "space-between",
       marginVertical: 8,
+    },
+    kycBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      borderRadius: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      marginHorizontal: 0,
+      marginTop: 10,
+      marginBottom: 2,
+    },
+    kycBannerTitle: {
+      color: "#fff",
+      fontSize: 13,
+      fontWeight: "700",
+    },
+    kycBannerSub: {
+      color: "rgba(255,255,255,0.82)",
+      fontSize: 11,
+      marginTop: 1,
     },
     actionBtn: {
       width: 64,

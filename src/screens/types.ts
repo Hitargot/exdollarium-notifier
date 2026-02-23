@@ -49,6 +49,7 @@ export type RootStackParamList = {
   ResetPinScreen: { bank: BankAccount };
   VerifyPinOtpScreen: { bank: BankAccount; email: string };
   SuccessOnboarding: undefined;
+  KYC: undefined;
 };
 export type BankAccount = {
   id?: string;
