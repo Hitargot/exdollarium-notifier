@@ -28,8 +28,7 @@ const VerifyLoading: React.FC<Props> = ({
   small = false,
   containerStyle,
 }) => {
-  const themeCtx = (() => { try { return useTheme(); } catch (e) { return undefined as any; } })();
-  const t = themeCtx || appTheme;
+  const t = useTheme();
   const styles = useMemo(() => createStyles(t), [t]);
 
   // Dynamic Color Palette for Statuses

@@ -22,8 +22,7 @@ const TicketsScreen: React.FC = () => {
   const route = useRoute<any>();
   
   // Theme & Styles
-  const themeCtx = (() => { try { return useTheme(); } catch (e) { return undefined as any; } })();
-  const t = themeCtx || appTheme;
+  const t = useTheme();
   const styles = useMemo(() => createStyles(t), [t]);
 
   // State

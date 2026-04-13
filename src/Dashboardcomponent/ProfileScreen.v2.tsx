@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+﻿import React, { useEffect, useState, useMemo } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, TextInput, 
   ScrollView, Switch, Platform, Share 
@@ -44,7 +44,7 @@ const ProfileScreenV2 = () => {
   // Contexts
   const prefCtx = usePreferences();
   const themeCtx = useTheme();
-  const runtimeTheme = themeCtx || theme;
+  const runtimeTheme = themeCtx;
   const styles = useMemo(() => createStyles(runtimeTheme), [runtimeTheme]);
 
   // Input States
@@ -116,7 +116,7 @@ const ProfileScreenV2 = () => {
       setUser(next);
       await AsyncStorage.setItem('@profile_cache_v2', JSON.stringify({ ts: Date.now(), data: next }));
       setShowEditModal(false);
-      showToast('✅ Profile updated');
+      showToast('₦Profile updated');
     } catch (err: any) {
       showToast(err.message);
     } finally {
@@ -144,7 +144,7 @@ const ProfileScreenV2 = () => {
       setUser(next);
       await AsyncStorage.setItem('@profile_cache_v2', JSON.stringify({ ts: Date.now(), data: next }));
       setShowPayIdModal(false);
-      showToast('✅ Pay ID updated');
+      showToast('₦Pay ID updated');
     } catch (err: any) {
       showToast(err.message);
     } finally {
@@ -171,7 +171,7 @@ const ProfileScreenV2 = () => {
       setShowPasswordModal(false);
       setCurrentPassword('');
       setNewPassword('');
-      showToast('✅ Password changed successfully');
+      showToast('₦Password changed successfully');
     } catch (err: any) {
       showToast(err.message);
     } finally {

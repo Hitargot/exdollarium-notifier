@@ -55,6 +55,25 @@ if (missingSpecsOrFabric) {
   process.exit(0);
 }
 
+// If the TypeScript codegen parser fails with unknown prop/type errors (often
+// caused by third-party libs with types the parser can't resolve), treat this
+// as non-fatal during `npm install` so developers on varying environments
+// (especially CI or Windows) can still install dependencies. To force strict
+// behavior and stop on these errors, set the environment variable
+// CODEGEN_STRICT=1 before running install/build.
+if (combined.includes('unknown prop type') || combined.includes('unknown prop type for') || combined.includes('gettypeannotation') || combined.includes('cannot use') || combined.includes('unknown primitive type')) {
+  if (process.env.CODEGEN_STRICT === '1') {
+    // In strict mode, fail as before so callers can see the error
+    process.stdout.write(stdout);
+    process.stderr.write(stderr);
+    process.exit(attempt.status || 1);
+  }
+  console.warn('[codegen] non-fatal: TypeScript parser error during codegen detected (treated as non-fatal).');
+  console.warn('[codegen] To reproduce the failure, run with CODEGEN_STRICT=1');
+  console.warn('[codegen] Output summary:\n', stdout || '', stderr || '');
+  process.exit(0);
+}
+
 if (combined.includes('missing required arguments') || combined.includes('options:') || combined.includes('usage: generate-codegen-artifacts.js')) {
   console.log('Retrying codegen with legacy CLI flags (-p -t -o)...');
   const legacyArgs = ['-p', path.join(__dirname, '..'), '-t', 'android', '-o', outDir];

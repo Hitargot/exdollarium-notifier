@@ -34,8 +34,7 @@ const QuickActionItem = ({ icon, label, color, onPress, textColor }: any) => {
 };
 
 const QuickActionsRow: React.FC<Props> = ({ onSend, onWithdraw, onTopup }) => {
-  const themeCtx = useTheme();
-  const t = themeCtx || appTheme;
+  const t = useTheme();
 
   return (
     <View style={styles.row}>

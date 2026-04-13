@@ -2,13 +2,6 @@
 
 import { AppRegistry } from 'react-native';
 import App from './App';
-import theme from './src/styles/theme';
-// Use the modular background handler export to avoid namespaced/deprecated API
-// Defer loading the messaging background handler to runtime and support both
-// the legacy namespaced API and the newer modular export. Some installed
-// versions of @react-native-firebase/messaging may not export
-// `setBackgroundMessageHandler` directly, so we use a defensive dynamic
-// import and feature-detect the available API.
 import * as Notifications from 'expo-notifications';
 import { initializeApp, getApps, getApp } from '@react-native-firebase/app'; // Import getApp
 
@@ -30,65 +23,40 @@ if (getApps().length === 0) {
   console.log('[index.ts] Firebase initialized for background handler');
 }
 
-// Configure background message handler using a dynamic, feature-detected
-// approach so this file works across multiple rn-firebase versions.
-(async function setupBackgroundHandler() {
-  try {
-    const messagingModule: any = await import('@react-native-firebase/messaging');
+// Configure FCM background message handler.
+// @react-native-firebase/messaging is a native module — it must be required
+// synchronously. Dynamic import() does not work with it and causes
+// "Cannot read property 'call' of undefined".
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const messagingModule: any = require('@react-native-firebase/messaging');
+  // v23 modular API: default export is the messaging() factory
+  const messaging: any =
+    typeof messagingModule.default === 'function'
+      ? messagingModule.default()
+      : typeof messagingModule === 'function'
+      ? messagingModule()
+      : messagingModule.default || messagingModule;
 
-    // If the module exposes a top-level setBackgroundMessageHandler (modular API)
-    if (typeof messagingModule.setBackgroundMessageHandler === 'function') {
-      messagingModule.setBackgroundMessageHandler(async (remoteMessage: any) => {
-        console.log('Message handled in the background!', remoteMessage);
-        Notifications.scheduleNotificationAsync({
-          content: ({
-            title: remoteMessage.notification?.title || 'Background Message',
-            body: remoteMessage.notification?.body || 'Check the app.',
-            data: remoteMessage.data,
-            android: { channelId: 'silent', smallIcon: 'notification_icon', color: (theme && theme.colors && theme.colors.primary) || '#162660' },
-          } as any),
-          trigger: null,
-        });
+  if (messaging && typeof messaging.setBackgroundMessageHandler === 'function') {
+    messaging.setBackgroundMessageHandler(async (remoteMessage: any) => {
+      console.log('[index.ts] Background FCM message', remoteMessage);
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: remoteMessage.notification?.title || 'New message',
+          body: remoteMessage.notification?.body || 'You have a new notification.',
+          data: remoteMessage.data,
+        } as any,
+        trigger: null,
       });
-      return;
-    }
-
-    // Otherwise, the module may be the legacy default export (a factory function)
-    // which returns a messaging instance. Call it and check for setBackgroundMessageHandler.
-    const maybeFactory = messagingModule.default || messagingModule;
-    let messagingInstance: any = null;
-    if (typeof maybeFactory === 'function') {
-      try {
-        messagingInstance = maybeFactory();
-      } catch (e) {
-        // Some environments require calling without parentheses; try property access below
-        messagingInstance = maybeFactory;
-      }
-    } else {
-      messagingInstance = maybeFactory;
-    }
-
-    if (messagingInstance && typeof messagingInstance.setBackgroundMessageHandler === 'function') {
-      messagingInstance.setBackgroundMessageHandler(async (remoteMessage: any) => {
-        console.log('Message handled in the background!', remoteMessage);
-        Notifications.scheduleNotificationAsync({
-          content: ({
-            title: remoteMessage.notification?.title || 'Background Message',
-            body: remoteMessage.notification?.body || 'Check the app.',
-            data: remoteMessage.data,
-            android: { channelId: 'silent', smallIcon: 'notification_icon', color: (theme && theme.colors && theme.colors.primary) || '#162660' },
-          } as any),
-          trigger: null,
-        });
-      });
-      return;
-    }
-
-    console.warn('[index.ts] Unable to register FCM background handler: API not found on messaging module');
-  } catch (err) {
-    console.warn('[index.ts] Failed to load @react-native-firebase/messaging for background handler', String(err));
+    });
+    console.log('[index.ts] FCM background handler registered');
+  } else {
+    console.warn('[index.ts] messaging.setBackgroundMessageHandler not available');
   }
-})();
+} catch (err) {
+  console.warn('[index.ts] Failed to register FCM background handler:', String(err));
+}
 
 // Replace 'your_app_name_here' or use appName if you have it
 AppRegistry.registerComponent('main', () => App);

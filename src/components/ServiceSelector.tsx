@@ -19,8 +19,7 @@ const ServiceSelector = ({
     const [label, setLabel] = useState<string | null>(null);
 
     // Get the active theme
-    const themeCtx = (() => { try { return useTheme(); } catch (e) { return undefined; } })();
-    const runtimeTheme = themeCtx || theme;
+  const runtimeTheme = useTheme();
     const isDark = runtimeTheme.dark || runtimeTheme.mode === 'dark';
 
     // show a friendly label when available

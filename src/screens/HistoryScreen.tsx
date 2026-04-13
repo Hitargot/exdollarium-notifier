@@ -36,12 +36,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getProfile, getWalletData, getTransactions, getConfirmations } from '../api/client';
+import { getProfile, getWalletData, getTransactions, getConfirmations, createTicket } from '../api/client';
 // removed import of StackNavigationProp (module not available in this project); navigation will be typed as any
 import { Ionicons } from '@expo/vector-icons';
 import staticTheme from '../styles/theme';
 import { useTheme } from '../theme/index';
 import { pickContrastText } from '../theme/colorUtils';
+import { showToast } from '../utils/toast';
 import Constants from 'expo-constants';
 import DateTimePicker from '@react-native-community/datetimepicker';
 // Prefer `react-native-modal-datetime-picker` when available because it presents
@@ -105,8 +106,7 @@ type NavigationProp = any;
 const FILTER_TYPES = ['All', 'Funding', 'Withdrawal', 'Sent Transfer', 'Received Transfer', 'Trade Confirmation'];
 
 const HistoryScreen = () => {
-        const themeCtx = (() => { try { return useTheme(); } catch (e) { return undefined as any; } })();
-        const theme = themeCtx || staticTheme;
+  const theme = useTheme();
     const navigation = useNavigation() as NavigationProp;
     const styles = React.useMemo(() => createStyles(theme), [theme]);
     const route = useRoute();
@@ -135,6 +135,9 @@ const HistoryScreen = () => {
     // we previously stored filtered in state which caused extra re-renders when computing large lists
     const [appliedFilters, setAppliedFilters] = useState<FilterState>({ type: 'All', startDate: new Date('2024-01-01'), endDate: new Date(), status: 'All' });
     const [countdowns, setCountdowns] = useState<{ [txnId: string]: string }>({});
+    const [alerting, setAlerting] = useState<Record<string, boolean>>({});
+    const [alerted, setAlerted] = useState<Record<string, boolean>>({});
+    const [alertedMap, setAlertedMap] = useState<Record<string, number>>({});
     const [user, setUser] = useState<any>(null);
     const [dataFetched, setDataFetched] = useState(false);
     const navigatedToReceipt = React.useRef(false);
@@ -153,7 +156,8 @@ const HistoryScreen = () => {
                 if (txn.type === 'Trade Confirmation' && txn.status?.toLowerCase() === 'pending' && txn.createdAt) {
                     const created = new Date(txn.createdAt);
                     const now = new Date();
-                    const totalMinutes = 180;
+                    // 30 minutes deadline to match Dashboard behaviour
+                    const totalMinutes = 30;
                     const elapsed = Math.floor((now.getTime() - created.getTime()) / 60000);
                     const remaining = totalMinutes - elapsed;
                     if (remaining > 0) {
@@ -161,14 +165,51 @@ const HistoryScreen = () => {
                         const mins = remaining % 60;
                         newCountdowns[txn._id] = `${hrs > 0 ? `${hrs}h ` : ''}${mins}m left`;
                     } else {
-                        newCountdowns[txn._id] = 'expired';
+                        // expired (but if user already alerted, show the 10-minute cooldown remaining)
+                        const alertedTs = alertedMap && alertedMap[txn._id] ? Number(alertedMap[txn._id]) : 0;
+                        const cooldownMs = 10 * 60 * 1000;
+                        if (alertedTs) {
+                            const nowTs = Date.now();
+                            const diff = cooldownMs - (nowTs - alertedTs);
+                            if (diff > 0) {
+                                const minsLeft = Math.ceil(diff / 60000);
+                                newCountdowns[txn._id] = `${minsLeft}m left`;
+                            } else {
+                                newCountdowns[txn._id] = 'expired';
+                            }
+                        } else {
+                            newCountdowns[txn._id] = 'expired';
+                        }
                     }
                 }
             });
             setCountdowns(newCountdowns);
         }, 1000);
         return () => clearInterval(interval);
-    }, [allTransactions]);
+    }, [allTransactions, alertedMap]);
+
+        // hydrate alerted txns from AsyncStorage so notified state is shared across screens
+        useEffect(() => {
+            (async () => {
+                        try {
+                            const rawMap = await AsyncStorage.getItem('alertedTxnsMap');
+                            if (rawMap) {
+                                const map = JSON.parse(rawMap || '{}') || {};
+                                const keys = Object.keys(map || {});
+                                if (keys.length) {
+                                    setAlerted(Object.fromEntries(keys.map((id: string) => [id, true])));
+                                    setAlertedMap(map as Record<string, number>);
+                                }
+                            } else {
+                                const raw = await AsyncStorage.getItem('alertedTxns');
+                                if (raw) {
+                                    const arr = JSON.parse(raw);
+                                    if (Array.isArray(arr)) setAlerted(Object.fromEntries(arr.map((id: string) => [id, true])));
+                                }
+                            }
+                } catch (e) { /* ignore */ }
+            })();
+        }, []);
 
     // loadMore will be declared after we compute `filtered` to avoid referencing it before declaration
 
@@ -247,7 +288,7 @@ const HistoryScreen = () => {
                 // cache the combined list for faster subsequent loads
                 try { await AsyncStorage.setItem('transactionsCache', JSON.stringify(combined)); } catch (e) { /* ignore */ }
             } catch (err) {
-                console.error('❌ Error fetching full history:', err);
+                console.error('Error fetching full history:', err);
             } finally {
                 setLoading(false);
                 setRefreshing(false);
@@ -317,7 +358,7 @@ useEffect(() => {
         });
     }, [searchText, appliedFilters, allTransactions, filtersLoaded, dataFetched]);
 
-    // (Removed premium gating — features available to all users)
+    // (Removed premium gating; features available to all users)
 
     // Summary stats used by premium header
     const premiumSummary = React.useMemo(() => {
@@ -447,22 +488,53 @@ useEffect(() => {
             const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:#f4f4f4}</style></head><body><h2>Transactions</h2><table><thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Status</th><th>Transaction ID</th><th>Service</th><th>Note</th></tr></thead><tbody>${rowsHtml}</tbody></table></body></html>`;
 
             // Use expo-print if available to create a PDF file
-            if (PrintAPI && FileSystem && Sharing) {
+            if (PrintAPI && FileSystem) {
                 try {
                     const { uri } = await PrintAPI.printToFileAsync({ html });
-                    // Share the generated file
-                    if (Sharing.isAvailableAsync && (await Sharing.isAvailableAsync())) {
-                        await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Share transactions PDF' });
-                    } else {
-                        await Share.share({ url: uri, title: 'Transactions PDF' } as any);
+                    // Prefer expo-sharing when available (handles Android file URIs correctly)
+                    try {
+                        if (Sharing && Sharing.isAvailableAsync && (await Sharing.isAvailableAsync())) {
+                            await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Share transactions PDF' });
+                            // cleanup
+                            try { if (uri && FileSystem && FileSystem.deleteAsync) await FileSystem.deleteAsync(uri, { idempotent: true }); } catch (e) { /* ignore */ }
+                            return;
+                        }
+                    } catch (e) {
+                        console.warn('expo-sharing check/share failed', e);
                     }
-                    // cleanup: if uri is in cache, optionally delete - many runtimes auto-manage print temp files
-                    try { if (uri && FileSystem && FileSystem.deleteAsync) await FileSystem.deleteAsync(uri, { idempotent: true }); } catch (e) { /* ignore */ }
-                    return;
+
+                    // If expo-sharing isn't available or failed, try to convert to a content URI on Android
+                    try {
+                        if (FileSystem.getContentUriAsync) {
+                            // getContentUriAsync exists on Android (expo-file-system) and returns a content:// URI
+                            const contentUri = await FileSystem.getContentUriAsync(uri);
+                            await Share.share({ url: contentUri, title: 'Transactions PDF' } as any);
+                            try { if (uri && FileSystem && FileSystem.deleteAsync) await FileSystem.deleteAsync(uri, { idempotent: true }); } catch (e) { /* ignore */ }
+                            return;
+                        }
+                    } catch (e) {
+                        console.warn('getContentUriAsync fallback failed', e);
+                    }
+
+                    // Last-resort: try the built-in Share API with the file URI (this may fail on some platforms/production builds)
+                    try {
+                        await Share.share({ url: uri, title: 'Transactions PDF' } as any);
+                        try { if (uri && FileSystem && FileSystem.deleteAsync) await FileSystem.deleteAsync(uri, { idempotent: true }); } catch (e) { /* ignore */ }
+                        return;
+                    } catch (e) {
+                        console.warn('Share fallback failed', e);
+                    }
+
+                    // If we reached here, attempts to share the PDF failed; fall through to CSV fallback
                 } catch (e) {
                     console.warn('PDF generation failed', e);
                     // fallback to CSV export
                 }
+            } else {
+                // Helpful diagnostics for production: which optional modules are missing
+                console.warn('PDF export unavailable. PrintAPI:', !!PrintAPI, 'FileSystem:', !!FileSystem, 'Sharing:', !!Sharing);
+                // Friendly user message when PDF export is not supported in this build
+                try { Alert.alert('PDF not available', 'PDF export is not supported in this build. You can export as CSV instead.'); } catch (_) { /* ignore */ }
             }
 
             // fallback: share CSV if PDF not available
@@ -663,10 +735,10 @@ useEffect(() => {
             receiptData.fields.push({ label: 'Type', value: txn.type }, { label: 'Amount', value: formatSignedAmount(txn.amount, txn.type) }, { label: 'Transaction ID', value: transactionId, copyable: true }, { label: 'Date', value: new Date(txn.createdAt).toLocaleString() || 'N/A' }, { label: 'Status', value: txn.status || 'N/A' });
             const bankLabel = txn.bankMeta || (txn.bank && (txn.bank.bankName ? `${txn.bank.bankName} - ${txn.bank.accountNumber}` : JSON.stringify(txn.bank))) || txn.bankId || null;
             if (txn.fee !== undefined && txn.fee !== null && Number(txn.fee) !== 0) {
-                receiptData.fields.push({ label: 'Fee', value: `₦${Number(txn.fee).toLocaleString()}` });
+                receiptData.fields.push({ label: 'Fee', value: Number(txn.fee).toLocaleString() });
                 try {
                     const total = (Number(txn.amount || 0) + Number(txn.fee || 0));
-                    receiptData.fields.push({ label: 'Total Debited', value: `₦${total.toLocaleString()}` });
+                    receiptData.fields.push({ label: 'Total Debited', value: total.toLocaleString() });
                 } catch (e) { /* ignore */ }
             }
             if (bankLabel) receiptData.fields.push({ label: 'Bank', value: bankLabel });
@@ -755,11 +827,11 @@ useEffect(() => {
                         const adminCurr = (txn.adminSelectedCurrency || txn.selectedCurrency || '').toUpperCase();
                         if (userAmt) receiptData.fields.push({ label: `Amount input in ${userCurr || 'Foreign Currency'}`, value: `${userAmt.toLocaleString()} ${userCurr}` });
                         if (adminAmt) receiptData.fields.push({ label: `Amount funded in ${adminCurr || 'Foreign Currency'}`, value: `${adminAmt.toLocaleString()} ${adminCurr}` });
-                        if (txn.amountInNaira) receiptData.fields.push({ label: 'Amount in Naira', value: `₦${txn.amountInNaira.toLocaleString()}` });
+                        if (txn.amountInNaira) receiptData.fields.push({ label: 'Amount in Naira', value: txn.amountInNaira.toLocaleString() });
                         if (txn.exchangeRateUsed) receiptData.fields.push({ label: 'Exchange Rate', value: txn.exchangeRateUsed.toLocaleString() });
                     } catch (ee) {
                         // best-effort fallback to legacy single field
-                        receiptData.fields.push({ label: `Amount in ${txn.selectedCurrency?.toUpperCase() ?? 'Foreign Currency'}`, value: txn.amountInForeignCurrency ? `${txn.amountInForeignCurrency.toLocaleString()} ${txn.selectedCurrency?.toUpperCase()}` : 'N/A' }, { label: 'Exchange Rate', value: txn.exchangeRateUsed ? txn.exchangeRateUsed.toLocaleString() : 'N/A' }, { label: 'Amount in Naira', value: txn.amountInNaira ? `₦${txn.amountInNaira.toLocaleString()}` : 'N/A' });
+                        receiptData.fields.push({ label: `Amount in ${txn.selectedCurrency?.toUpperCase() ?? 'Foreign Currency'}`, value: txn.amountInForeignCurrency ? `${txn.amountInForeignCurrency.toLocaleString()} ${txn.selectedCurrency?.toUpperCase()}` : 'N/A' }, { label: 'Exchange Rate', value: txn.exchangeRateUsed ? txn.exchangeRateUsed.toLocaleString() : 'N/A' }, { label: 'Amount in Naira', value: txn.amountInNaira ? txn.amountInNaira.toLocaleString() : 'N/A' });
                     }
                 }
             }
@@ -773,7 +845,66 @@ useEffect(() => {
 
     };
 
-    const renderTxn = useCallback(({ item }: { item: any }) => (<TransactionItem txn={item} onPress={handleViewReceipt} isBalanceVisible={isBalanceVisible} countdown={countdowns[item._id]} />), [isBalanceVisible, countdowns, handleViewReceipt]);
+    const renderTxn = useCallback(({ item }: { item: any }) => (<TransactionItem txn={item} onPress={handleViewReceipt} isBalanceVisible={isBalanceVisible} countdown={countdowns[item._id]} onAlert={handleAlertAdmin} alerted={!!alerted[item._id]} />), [isBalanceVisible, countdowns, handleViewReceipt, alerted]);
+    
+    const handleAlertAdmin = async (txn: any) => {
+        try {
+            if (!txn || !txn._id) return;
+            // rate-limit: one notify per 10 minutes per transaction
+            try {
+                const rawMap = await AsyncStorage.getItem('alertedTxnsMap');
+                const map = rawMap ? JSON.parse(rawMap) : {};
+                const lastTs = map && map[txn._id] ? Number(map[txn._id]) : 0;
+                const now = Date.now();
+                const cooldown = 10 * 60 * 1000; // 10 minutes
+                if (lastTs && (now - lastTs) < cooldown) {
+                    const remaining = Math.ceil((cooldown - (now - lastTs)) / 60000);
+                    showToast(`You can alert again in ${remaining} minute(s)`);
+                    return;
+                }
+            } catch (e) {
+                // ignore storage read errors and continue
+            }
+
+            // allow re-alerting after cooldown; the per-transaction timestamp enforces rate-limiting
+
+            setAlerting((s) => ({ ...(s || {}), [txn._id]: true }));
+
+            const transactionId = txn.transactionId || txn._id || 'N/A';
+            const amount = txn.amount !== undefined && txn.amount !== null ? Number(txn.amount).toLocaleString() : 'N/A';
+            const service = txn.serviceName || txn.serviceTag || 'N/A';
+            const created = new Date(txn.createdAt || txn.date || Date.now()).toLocaleString();
+
+            const subject = `Urgent: Attention required for transaction ${transactionId}`;
+            const message = `User: ${user?.username || user?.email || 'Unknown'}\nTransaction: ${transactionId}\nType: ${txn.type || 'N/A'}\nService: ${service}\nAmount: ${amount}\nStatus: ${txn.status || 'N/A'}\nDate: ${created}\n\nPlease attend to this confirmation; user has requested a reminder via the app.`;
+
+            await createTicket({ subject, message, type: 'admin-alert' } as any);
+            setAlerted((s) => ({ ...(s || {}), [txn._id]: true }));
+            try {
+                const rawMap = await AsyncStorage.getItem('alertedTxnsMap');
+                const map = rawMap ? JSON.parse(rawMap) : {};
+                map[txn._id] = Date.now();
+                await AsyncStorage.setItem('alertedTxnsMap', JSON.stringify(map));
+                setAlertedMap((m) => ({ ...(m || {}), [txn._id]: map[txn._id] }));
+                // also maintain legacy array for backwards compatibility
+                try {
+                    const raw = await AsyncStorage.getItem('alertedTxns');
+                    const arr = raw ? JSON.parse(raw) : [];
+                    if (!Array.isArray(arr)) (arr as any[]).length = 0;
+                    if (!arr.includes(txn._id)) {
+                        arr.push(txn._id);
+                        await AsyncStorage.setItem('alertedTxns', JSON.stringify(arr));
+                    }
+                } catch (_) {}
+            } catch (e) { /* ignore */ }
+            showToast('Admin alerted. Support team has been notified.');
+        } catch (e) {
+            console.warn('Alert admin failed', e);
+            showToast('Failed to alert admin. Please try again later.');
+        } finally {
+            setAlerting((s) => ({ ...(s || {}), [txn._id]: false }));
+        }
+    };
 
     const openFilter = () => {
         setSelectedType(appliedFilters?.type || 'All');
@@ -793,12 +924,12 @@ useEffect(() => {
                 <View style={styles.premiumTopRow}>
                     <View>
                         <Text style={styles.premiumTitle}>Transaction History</Text>
-                        <Text style={styles.premiumSubtitle}>{premiumSummary.totalCount} transactions • {premiumSummary.totalVolume ? String(premiumSummary.totalVolume) : '—'}</Text>
+                        <Text style={styles.premiumSubtitle}>{premiumSummary.totalCount} transactions {premiumSummary.totalVolume ? String(premiumSummary.totalVolume) : ''}</Text>
                     </View>
                     <View style={{ alignItems: 'flex-end' }}>
                             <Text style={styles.premiumBalanceLabel}>Balance</Text>
                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                <Text style={styles.premiumBalanceValue}>{isBalanceVisible && walletBalance !== null && walletBalance !== undefined ? `₦${Number(walletBalance).toLocaleString()}` : (isBalanceVisible ? '—' : '••••••')}</Text>
+                                <Text style={styles.premiumBalanceValue}>{isBalanceVisible && walletBalance !== null && walletBalance !== undefined ? Number(walletBalance).toLocaleString() : (isBalanceVisible ? '' : '•••••')}</Text>
                                 <TouchableOpacity onPress={() => setIsBalanceVisible((s) => !s)} style={styles.eyeBtn} accessibilityLabel={isBalanceVisible ? 'Hide balance' : 'Show balance'}>
                                     <Ionicons name={isBalanceVisible ? 'eye' : 'eye-off'} size={18} color={theme.colors.muted || '#888'} />
                                 </TouchableOpacity>

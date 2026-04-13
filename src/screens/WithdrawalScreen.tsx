@@ -19,8 +19,7 @@ type NavigationProp = StackNavigationProp<RootStackParamList, 'Withdrawal'>;
 
 const WithdrawalScreen = () => {
   const navigation = useNavigation<NavigationProp>();
-  const themeCtx = (() => { try { return useTheme(); } catch (e) { return undefined as any; } })();
-  const runtimeTheme = themeCtx || appTheme;
+  const runtimeTheme = useTheme();
   const styles = React.useMemo(() => createStyles(runtimeTheme), [runtimeTheme]);
 
   return (

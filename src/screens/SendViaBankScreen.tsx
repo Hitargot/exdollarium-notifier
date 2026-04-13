@@ -31,8 +31,7 @@ type NavigationProp = StackNavigationProp<RootStackParamList, 'SendViaBankScreen
 
 const SendViaBankScreen = () => {
     const navigation = useNavigation<NavigationProp>();
-    const themeCtx = (() => { try { return useTheme(); } catch (e) { return undefined as any; } })();
-    const t = themeCtx || appTheme;
+  const t = useTheme();
     const styles = useMemo(() => createStyles(t), [t]);
 
     const [search, setSearch] = useState('');
@@ -160,7 +159,7 @@ const SendViaBankScreen = () => {
                                             </View>
                                             <View style={{ flex: 1 }}>
                                                 <Text style={styles.bankCardName}>{item.accountName}</Text>
-                                                <Text style={styles.bankCardDetail}>{item.bankName} â€¢ {item.accountNumber}</Text>
+                                                <Text style={styles.bankCardDetail}>{item.bankName} â€?{item.accountNumber}</Text>
                                             </View>
                                             <Feather name="arrow-up-right" size={18} color={t.colors.muted} />
                                         </TouchableOpacity>

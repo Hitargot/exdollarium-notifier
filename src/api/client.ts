@@ -257,13 +257,25 @@ export const getKYCStatus = async () => {
 
 /**
  * Submit KYC documents.
+ * Uses fetch() instead of axios — React Native's axios FormData handling
+ * can corrupt multipart bodies, causing the backend to see empty fields.
  * @param formData  FormData with fields: idType, idNumber, document (file), selfie (file)
  */
 export const submitKYC = async (formData: FormData) => {
-  const res = await client.post('/api/kyc/submit', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
-  return res.data;
+  const url = `${baseURL.replace(/\/$/, '')}/api/kyc/submit`;
+  let token: string | null | undefined = null;
+  try {
+    token = await (authStorage as any).getToken();
+  } catch (e) {
+    token = await AsyncStorage.getItem('jwtToken');
+  }
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  // Do NOT set Content-Type — fetch sets it automatically with the correct boundary
+  const resp = await fetch(url, { method: 'POST', headers, body: formData as any });
+  const data = await resp.json().catch(() => null);
+  if (!resp.ok) throw data || new Error('KYC submission failed');
+  return data;
 };
 
 export default client;

@@ -17,8 +17,7 @@ const ImagePreviewScreen = ({ route, navigation }: any) => {
   const [imgRatio, setImgRatio] = useState<number | null>(null);
   const [normalizedUrl, setNormalizedUrl] = useState<string | null>(null);
   const [previewKind, setPreviewKind] = useState<'image' | 'video' | 'webview' | null>(null);
-  const themeCtx = (() => { try { return useTheme(); } catch (e) { return undefined as any; } })();
-  const theme = themeCtx || appTheme;
+  const theme = useTheme();
   const styles = React.useMemo(() => createStyles(theme), [theme]);
 
   useEffect(() => {
@@ -126,8 +125,8 @@ const ImagePreviewScreen = ({ route, navigation }: any) => {
 
         if (!ok) {
           // If probe failed (HEAD/GET blocked), still attempt to show a sensible fallback
-          // instead of blocking â€” allow opening in browser or using WebView/video player.
-          console.warn('[ImagePreview] probe failed for', normalized, ' â€” falling back to extension-based preview');
+          // instead of blocking â€?allow opening in browser or using WebView/video player.
+          console.warn('[ImagePreview] probe failed for', normalized, ' â€?falling back to extension-based preview');
           const ext = String(normalized || u).split('?')[0].split('.').pop() || '';
           const imgExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'];
           const videoExts = ['mp4', 'mov', 'm4v', 'webm', 'ogg', '3gp', 'mkv'];
@@ -268,7 +267,7 @@ const ImagePreviewScreen = ({ route, navigation }: any) => {
                       </View>
                     );
                   }
-                  // default: image â€” render ZoomableImage when possible
+                  // default: image â€?render ZoomableImage when possible
                   const ZoomableImage = ({ uri, style }: { uri: string; style?: any }) => {
                     // dynamic require so the app still runs if gesture-handler isn't installed
                     let PinchGestureHandler: any = null;

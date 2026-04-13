@@ -41,8 +41,7 @@ const MyPreSubmissionsScreen = ({ navigation }: any) => {
   const [completingId, setCompletingId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const themeCtx = useTheme();
-  const theme = themeCtx || appTheme;
+  const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
 
   // --- Logic Helpers ---
@@ -131,7 +130,7 @@ const MyPreSubmissionsScreen = ({ navigation }: any) => {
       // send numeric amount and a human-friendly display that includes the currency
       form.append('amount', amount);
       form.append('currency', currency);
-      const currencySymbols: Record<string, string> = { USD: '$', EUR: '€', GBP: '£' };
+      const currencySymbols: Record<string, string> = { USD: '$', EUR: '\u20AC', GBP: '\u00A3' };
       const display = `${currency} ${currencySymbols[currency] || ''}${Number(amount).toFixed(2)}`.replace(/\s+/g, ' ').trim();
       form.append('amountDisplay', display);
       files.forEach(f => form.append('files', {

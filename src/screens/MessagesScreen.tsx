@@ -7,7 +7,6 @@ import socket from '../utils/socket';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ScreenHeader from '../components/ScreenHeader';
 import SkeletonBox from '../components/SkeletonBox';
-import appTheme from '../styles/theme';
 import { useTheme } from '../theme/index';
 import { mapToUiStatus, highlightColor } from '../utils/statusMapper';
 
@@ -16,8 +15,7 @@ const MessagesScreen: React.FC = () => {
     const [tickets, setTickets] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     
-    const themeCtx = (() => { try { return useTheme(); } catch (e) { return undefined as any; } })();
-    const t = themeCtx || appTheme;
+    const t = useTheme();
     const styles = useMemo(() => createStyles(t), [t]);
 
     useEffect(() => { refreshTickets(); }, []);

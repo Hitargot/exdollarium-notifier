@@ -3,6 +3,8 @@ import { View, Text, Button, StyleSheet, Alert } from 'react-native';
 import authLock from '../utils/authLock';
 
 export default function DevAuthDebugScreen() {
+  // 🔒 This screen must never appear in production builds
+  if (!__DEV__) return null;
   const [passHash, setPassHash] = useState<string | null>(null);
   const [lastAuth, setLastAuth] = useState<number | null>(null);
   const [lastLogin, setLastLogin] = useState<number | null>(null);

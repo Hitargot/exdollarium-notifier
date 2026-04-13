@@ -18,13 +18,13 @@ import {
   TextInput,
   ScrollView,
   ActivityIndicator,
-  Alert,
   Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import { useTheme } from "../theme/index";
 import { getKYCStatus, submitKYC } from "../api/client";
+import ConfirmModal from "../components/ConfirmModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -91,6 +91,16 @@ const KYCScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const [selfieFile, setSelfieFile] = useState<PickedFile | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Modal state (replaces Alert.alert)
+  const [kycAlert, setKycAlert] = useState<{ visible: boolean; title: string; message: string }>({
+    visible: false,
+    title: "",
+    message: "",
+  });
+  const showAlert = (title: string, message: string) =>
+    setKycAlert({ visible: true, title, message });
+  const hideAlert = () => setKycAlert((prev) => ({ ...prev, visible: false }));
+
   // ── Fetch existing KYC status on mount ──────────────────────────────────────
   useEffect(() => {
     (async () => {
@@ -132,14 +142,14 @@ const KYCScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
       }
     } catch (err) {
       console.warn("[KYC] picker error:", err);
-      Alert.alert("Error", "Could not open file picker. Please try again.");
+      showAlert("Error", "Could not open file picker. Please try again.");
     }
   }, []);
 
   // ── Submit handler ───────────────────────────────────────────────────────────
   const handleSubmit = useCallback(async () => {
     if (!selectedIdType || !idNumber.trim() || !documentFile || !selfieFile) {
-      Alert.alert("Incomplete", "Please complete all steps before submitting.");
+      showAlert("Incomplete", "Please complete all steps before submitting.");
       return;
     }
 
@@ -160,11 +170,19 @@ const KYCScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
       } as any);
 
       const res = await submitKYC(formData);
-      setKycData(res?.kyc || { status: "pending" });
+
+      if (res?.autoVerified) {
+        // ✅ Auto-approved instantly
+        setKycData({ ...(res.kyc || {}), status: 'approved' });
+        showAlert('🎉 KYC Approved!', 'Your identity was verified automatically. You can now make large withdrawals.');
+      } else {
+        // ⏳ Sent to manual review
+        setKycData(res?.kyc || { status: 'pending' });
+      }
     } catch (err: any) {
       const msg =
         err?.response?.data?.message || "Submission failed. Please try again.";
-      Alert.alert("Error", msg);
+      showAlert("Error", msg);
     } finally {
       setSubmitting(false);
     }
@@ -688,6 +706,17 @@ const KYCScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
           </>
         )}
       </ScrollView>
+
+      {/* Alert modal — replaces Alert.alert() throughout this screen */}
+      <ConfirmModal
+        visible={kycAlert.visible}
+        title={kycAlert.title}
+        message={kycAlert.message}
+        confirmText="OK"
+        onConfirm={hideAlert}
+        onCancel={hideAlert}
+        showActions={true}
+      />
     </View>
   );
 };

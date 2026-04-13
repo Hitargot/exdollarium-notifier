@@ -5,12 +5,15 @@ import { mapToUiStatus, highlightColor } from '../utils/statusMapper';
 import appTheme from '../styles/theme';
 import { useTheme } from '../theme/index';
 import { pickContrastText } from '../theme/colorUtils';
+import { showInAppConfirm } from '../contexts/ConfirmContext';
 
 type Props = {
   txn: any;
   onPress?: (t: any) => void;
   isBalanceVisible?: boolean;
   countdown?: string;
+  onAlert?: (t: any) => void;
+  alerted?: boolean;
 };
 
 // Use centralized status mapper so colors/labels match the rest of the app
@@ -36,9 +39,8 @@ const getIcon = (type: string, themeColors: any) => {
   }
 };
 
-const TransactionItem = ({ txn, onPress, isBalanceVisible, countdown }: Props) => {
-  const themeCtx = (() => { try { return useTheme(); } catch (e) { return undefined as any; } })();
-  const theme = themeCtx || appTheme;
+const TransactionItem = ({ txn, onPress, isBalanceVisible, countdown, onAlert, alerted }: Props) => {
+  const theme = useTheme();
   const styles = React.useMemo(() => createStyles(theme), [theme]);
   const fg = theme.colors.text;
   const date = new Date(txn.createdAt || txn.date || Date.now());
@@ -67,17 +69,17 @@ const TransactionItem = ({ txn, onPress, isBalanceVisible, countdown }: Props) =
             const isNegative = ttype.includes('withdrawal') || ttype.includes('sent transfer') || ttype.includes('sent');
             const isPositive = ttype.includes('fund') || ttype.includes('received transfer') || ttype.includes('received');
             const sign = amountPresent ? (isNegative ? '-' : isPositive ? '+' : '') : '';
-            const amountText = amountPresent ? (isBalanceVisible ? `${sign}₦${Math.abs(Number(txn.amount || 0)).toLocaleString()}` : '₦****') : null;
+            const amountText = amountPresent ? (isBalanceVisible ? `${sign}${Math.abs(Number(txn.amount || 0)).toLocaleString()}` : '***') : null;
             const serviceText = txn.serviceName && txn.serviceName !== 'N/A' ? txn.serviceName : null;
 
             // Main title
             let title = '';
             if (isTrade) {
-              if (amountText) title = `${txn.type} – ${amountText}`;
+              if (amountText) title = `${txn.type} ${amountText}`;
               else if (serviceText) title = serviceText;
               else title = txn.type || 'Trade Confirmation';
             } else {
-              title = `${txn.type} – ${isBalanceVisible ? `${sign}₦${Math.abs(Number(txn.amount || 0)).toLocaleString() ?? 0}` : '₦****'}`;
+              title = `${txn.type} ${isBalanceVisible ? `${sign}${Math.abs(Number(txn.amount || 0)).toLocaleString() ?? 0}` : '***'}`;
             }
 
             return (
@@ -93,12 +95,51 @@ const TransactionItem = ({ txn, onPress, isBalanceVisible, countdown }: Props) =
         </View>
       </View>
 
-      <View style={{ alignItems: 'flex-end' }}>
-        {txn.type === 'Trade Confirmation' && txn.status?.toLowerCase() === 'pending' && countdown && (
-          <Text style={{ fontSize: 10, color: theme.colors.accent || '#ff9900', marginBottom: 2 }}>⏰ {countdown}</Text>
-        )}
+  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ alignItems: 'flex-end' }}>
+          {txn.type === 'Trade Confirmation' && txn.status?.toLowerCase() === 'pending' && countdown && (
+            <Text style={{ fontSize: 10, color: theme.colors.accent || '#ff9900', marginBottom: 2 }}>{countdown}</Text>
+          )}
 
-        <Text style={{ fontSize: 12, fontWeight: '600', color: getStatusColor(txn.status, txn.type), textTransform: 'capitalize' }}>{mapToUiStatus(txn.status).label || (txn.status || '—')}</Text>
+          <Text style={{ fontSize: 12, fontWeight: '600', color: getStatusColor(txn.status, txn.type), textTransform: 'capitalize' }}>{mapToUiStatus(txn.status).label || (txn.status || '')}</Text>
+        </View>
+
+        {/* Bell alert for expired confirmations */}
+        {txn.type === 'Trade Confirmation' && txn.status?.toLowerCase() === 'pending' && countdown === 'expired' && (
+          <>
+            <TouchableOpacity
+              onPress={async () => {
+                try {
+                  // confirm with user before alerting admin
+                  const confirmed = await showInAppConfirm({
+                    title: 'Alert support?',
+                    message: 'Notify support now about this pending confirmation?',
+                    confirmText: 'Notify',
+                    cancelText: 'Cancel',
+                  });
+                  if (confirmed) {
+                    onAlert && onAlert(txn);
+                  }
+                } catch (e) {
+                  // ignore
+                }
+              }}
+              disabled={!onAlert}
+              accessibilityRole="button"
+              accessibilityLabel={alerted ? 'Admin alerted' : 'Alert admin'}
+              style={{ padding: 6 }}
+            >
+              <Ionicons
+                name={alerted ? 'notifications' : 'notifications-outline'}
+                size={18}
+                color={alerted ? (theme.colors.success || '#1DBF73') : (theme.colors.primary || '#007bff')}
+              />
+            </TouchableOpacity>
+            {alerted && (
+              <Text style={{ fontSize: 10, color: theme.colors.success, marginLeft: 4 }}>Notified</Text>
+            )}
+          </>
+        )}
       </View>
     </TouchableOpacity>
   );

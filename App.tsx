@@ -127,6 +127,7 @@ const ANDROID_IMPORTANCE_MAX = (Notifications as any)?.AndroidImportance?.MAX ??
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
+    shouldShowAlert: true,    // required by NotificationBehavior type
     shouldShowBanner: true,   // show popup banner in foreground
     shouldShowList: true,     // add to notification center/shade
     shouldPlaySound: true,
@@ -494,7 +495,7 @@ export default function App() {
         // Ensure runtime theme is ready before deciding the initial route to
         // avoid mounting screens (like PasscodeUnlock) before theme tokens
         // are available which causes visual flashes.
-        try { const themeMod: any = await import('./src/theme'); await themeMod.awaitThemeReady(); } catch (e) { /* ignore */ }
+        try { const themeMod: any = await import('./src/theme/index'); await themeMod.awaitThemeReady(); } catch (e) { /* ignore */ }
         // If the user hasn't seen the intro (fresh install), show it first.
         try {
           const seen = await AsyncStorage.getItem('hasSeenIntro');
@@ -570,6 +571,7 @@ export default function App() {
     try {
       Notifications.setNotificationHandler({
         handleNotification: async () => ({
+          shouldShowAlert: true,    // required by NotificationBehavior type
           shouldShowBanner: true,
           shouldShowList: true,
           shouldPlaySound: true,

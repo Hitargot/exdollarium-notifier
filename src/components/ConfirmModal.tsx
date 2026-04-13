@@ -38,8 +38,7 @@ const ConfirmModal: React.FC<Props> = ({
   onConfirm, onCancel, children, showActions = true, fullScreen, 
   confirmLoading, confirmDisabled, isDestructive 
 }) => {
-  const themeCtx = (() => { try { return useTheme(); } catch (e) { return undefined; } })();
-  const runtimeTheme = themeCtx || appTheme;
+  const runtimeTheme = useTheme();
   const { colors: tColors, radius: tRadius } = runtimeTheme;
   
   const styles = createStyles(tColors, tRadius);

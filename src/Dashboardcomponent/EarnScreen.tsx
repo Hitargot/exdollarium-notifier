@@ -18,8 +18,7 @@ export const API_URL = extra?.apiUrl || 'http://localhost:3000';
 const EarnScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<any | null>(null);
-  const themeCtx = (() => { try { return useTheme(); } catch (e) { return undefined as any; } })();
-  const t = themeCtx || theme;
+  const t = useTheme();
   const styles = useMemo(() => createStyles(t), [t]);
 
   useEffect(() => {

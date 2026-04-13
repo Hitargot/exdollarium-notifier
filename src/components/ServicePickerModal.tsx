@@ -53,8 +53,7 @@ export default function ServicePickerModal({
     const servicesMap = useRef<Record<string, Service>>({});
     const [currentSelectedName, setCurrentSelectedName] = useState<string | null>(null);
 
-    const themeCtx = (() => { try { return useTheme(); } catch (e) { return undefined; } })();
-    const runtimeTheme = themeCtx || theme;
+  const runtimeTheme = useTheme();
     const isDark = runtimeTheme.dark || runtimeTheme.mode === 'dark';
     const styles = useMemo(() => createStyles(runtimeTheme), [runtimeTheme]);
 

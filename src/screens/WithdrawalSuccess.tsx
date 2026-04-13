@@ -18,7 +18,7 @@ export default function WithdrawalSuccess({ navigation, route }: Props) {
   const confettiRef = useRef<ConfettiCannon | null>(null);
 
   const themeCtx = useTheme();
-  const t = themeCtx || appTheme;
+  const t = themeCtx;
   const styles = useMemo(() => createStyles(t), [t]);
 
   const mapToUiStatus = (s: string | undefined) => {

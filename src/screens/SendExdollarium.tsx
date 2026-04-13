@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
     View, Text, TextInput, TouchableOpacity, StyleSheet, 
     ActivityIndicator, Modal, KeyboardAvoidingView, Platform, ScrollView 
@@ -22,8 +22,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'SendExdolla
 
 const SendExdollarium: React.FC = () => {
     const navigation = useNavigation<NavigationProp>();
-    const themeCtx = (() => { try { return useTheme(); } catch (e) { return undefined as any; } })();
-    const t = themeCtx || appTheme;
+  const t = useTheme();
     const styles = useMemo(() => createStyles(t), [t]);
 
     // State

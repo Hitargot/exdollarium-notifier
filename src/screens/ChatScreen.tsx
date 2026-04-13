@@ -90,7 +90,7 @@ const ChatScreen: React.FC = () => {
   const ticketId = route.params?.ticketId;
   const ticketSubject = route.params?.ticketSubject;
   // If `simple` param is passed to this screen, render only the chat list + input
-  // (no header, no attach sheet, no previews) — useful for embedding the chat.
+  // (no header, no attach sheet, no previews) useful for embedding the chat.
   const simpleView = !!(route.params as any)?.simple;
   const initialMsgs = (route.params && (route.params as any).initialMessages) || [];
   const [messages, setMessages] = useState<Array<{ id: string; text: string; from: 'user' | 'bot' | 'admin' | string; meta?: any }>>(initialMsgs);
@@ -135,8 +135,7 @@ const ChatScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
 
   // Prefer the runtime Theme context so dark/light modes are respected.
-  const themeCtx = (() => { try { return useTheme(); } catch (e) { return undefined as any; } })();
-  const theme = themeCtx || appTheme;
+  const theme = useTheme();
   const styles = React.useMemo(() => createStyles(theme), [theme]);
 
   // dynamic colors applied inline to avoid referencing theme in static StyleSheet.
@@ -166,7 +165,7 @@ const ChatScreen: React.FC = () => {
   // Reserve space for the input and the keyboard when open so the chat is
   // pushed up and nothing is overlapped. When the keyboard 'pushes' the
   // content we reduce that extra keyboard padding slightly to avoid a large
-  // visual gap — this keeps the UI tighter on small screens.
+  // visual gap this keeps the UI tighter on small screens.
   // When keyboard opens we want to reserve enough space so the last message
   // is not overlapped. Previously we reduced the keyboard padding which could
   // cause overlap on some devices. Set reduction to 0 so the chat is pushed
@@ -178,7 +177,7 @@ const ChatScreen: React.FC = () => {
   // If the attach sheet is open, avoid including keyboard padding so the
   // sheet isn't pushed up and the messages/preview remain closer together.
   // Reserve the full keyboard height (plus a small computed gap) when the
-  // keyboard is open so content isn't overlapped. Do not reduce here — we
+  // keyboard is open so content isn't overlapped. Do not reduce here we
   // want predictable behavior across devices and avoid overlap.
   const keyboardPad = (!showAttachSheet && keyboardOpen) ? Math.max(MIN_PADDING_ON_PUSH, (keyboardHeight + keyboardGap) /* - REDUCE_ON_PUSH intentionally disabled */) : 0;
 
@@ -1060,7 +1059,7 @@ const ChatScreen: React.FC = () => {
                     {item.meta && item.meta.at ? (
                       <View style={[styles.timeRow, isAdmin ? { justifyContent: 'flex-start' } : { justifyContent: 'flex-end' }]}>
                         <Text style={[styles.msgTime, { color: theme.colors.muted }]}>{formatTime(item.meta.at)}</Text>
-                        {!isAdmin ? <Text style={[styles.msgStatus, { color: theme.colors.muted }]}>{item.meta && item.meta.status === 'read' ? '✓✓' : (item.meta && item.meta.status === 'sending' ? '…' : '✓')}</Text> : null}
+                        {!isAdmin ? <Text style={[styles.msgStatus, { color: theme.colors.muted }]}>{item.meta && item.meta.status === 'read' ? '✓✓' : (item.meta && item.meta.status === 'sending' ? '…' : '')}</Text> : null}
                       </View>
                     ) : null}
                   </View>
@@ -1163,7 +1162,7 @@ const ChatScreen: React.FC = () => {
           onSubmitEditing={() => { if (!loading && ticketStatus !== 'resolved') send(); }}
           // on Android we don't use onContentSizeChange for dynamic sizing
         />
-        <Pressable onPress={send} style={[styles.send, { backgroundColor: dyn.sendBtnBg }, ticketStatus === 'resolved' ? { opacity: 0.5 } : null]} disabled={loading || ticketStatus === 'resolved' || (String(text || '').trim() === '' && attachments.length === 0)}><Text style={{ color: theme.colors.white, fontWeight: '700', fontSize: 16 }}>{loading ? '...' : '➤'}</Text></Pressable>
+  <Pressable onPress={send} style={[styles.send, { backgroundColor: dyn.sendBtnBg }, ticketStatus === 'resolved' ? { opacity: 0.5 } : null]} disabled={loading || ticketStatus === 'resolved' || (String(text || '').trim() === '' && attachments.length === 0)}><Text style={{ color: theme.colors.white, fontWeight: '700', fontSize: 16 }}>{loading ? '...' : '→'}</Text></Pressable>
       </View>
     </View>
   ) : (
@@ -1193,7 +1192,7 @@ const ChatScreen: React.FC = () => {
             } catch (err) { /* ignore */ }
           }}
         />
-        <Pressable onPress={send} style={[styles.send, { backgroundColor: dyn.sendBtnBg }, ticketStatus === 'resolved' ? { opacity: 0.5 } : null]} disabled={loading || ticketStatus === 'resolved' || (String(text || '').trim() === '' && attachments.length === 0)}><Text style={{ color: theme.colors.white, fontWeight: '700', fontSize: 16 }}>{loading ? '...' : '➤'}</Text></Pressable>
+  <Pressable onPress={send} style={[styles.send, { backgroundColor: dyn.sendBtnBg }, ticketStatus === 'resolved' ? { opacity: 0.5 } : null]} disabled={loading || ticketStatus === 'resolved' || (String(text || '').trim() === '' && attachments.length === 0)}><Text style={{ color: theme.colors.white, fontWeight: '700', fontSize: 16 }}>{loading ? '...' : '→'}</Text></Pressable>
       </View>
     </Animated.View>
   )}

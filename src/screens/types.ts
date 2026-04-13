@@ -50,6 +50,7 @@ export type RootStackParamList = {
   VerifyPinOtpScreen: { bank: BankAccount; email: string };
   SuccessOnboarding: undefined;
   KYC: undefined;
+  BuyData: undefined;
 };
 export type BankAccount = {
   id?: string;

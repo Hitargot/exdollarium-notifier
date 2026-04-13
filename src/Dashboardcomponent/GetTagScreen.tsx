@@ -32,8 +32,7 @@ type Props = StackScreenProps<RootStackParamList, 'GetTag'>;
 const TOOLTIP_KEY = 'seen_gettag_tooltip_v1';
 
 const GetTagScreen: React.FC<Props> = ({ route, navigation }) => {
-  const themeCtx = (() => { try { return useTheme(); } catch (e) { return undefined; } })();
-  const theme = themeCtx || staticTheme;
+  const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
 
   const serviceNameFromRoute = route?.params?.serviceName ?? '';
@@ -183,7 +182,7 @@ const GetTagScreen: React.FC<Props> = ({ route, navigation }) => {
             )}
             <Pressable style={styles.tagInner} onPress={() => handleCopy(service.tag)}>
               <Text style={styles.tagText} numberOfLines={1} ellipsizeMode="middle">
-                {service.tag || '••••••••••••'}
+                {service.tag || '***********'}
               </Text>
               <Animated.View style={{ transform: [{ scale: pulse }] }}>
                 <TouchableOpacity onPress={() => setShowTagModal(true)} style={styles.eyeBtn}>

@@ -47,8 +47,7 @@ const LoginScreen = () => {
     const [shouldRemember, setShouldRemember] = useState(true);
 
     // Theme integration
-    const themeCtx = (() => { try { return useTheme(); } catch (e) { return undefined; } })();
-    const theme = themeCtx || appTheme;
+  const theme = useTheme();
     const styles = useMemo(() => createStyles(theme), [theme]);
 
     useEffect(() => {
@@ -167,7 +166,7 @@ const LoginScreen = () => {
                         <View style={styles.passwordContainer}>
                             <TextInput
                                 style={styles.passwordInput}
-                                placeholder="••••••••"
+                                placeholder="•••••••"
                                 placeholderTextColor={theme.colors.muted}
                                 value={password}
                                 secureTextEntry={!isPasswordVisible}
@@ -225,7 +224,7 @@ const LoginScreen = () => {
                     <TouchableOpacity onPress={() => Linking.openURL('https://exdollarium-6f0f5aab6a7d.herokuapp.com/privacy-policy')}>
                         <Text style={styles.legalText}>Privacy Policy</Text>
                     </TouchableOpacity>
-                    <Text style={styles.legalSep}> • </Text>
+                    <Text style={styles.legalSep}> | </Text>
                     <TouchableOpacity onPress={() => Linking.openURL('https://exdollarium-6f0f5aab6a7d.herokuapp.com/terms')}>
                         <Text style={styles.legalText}>Terms of Service</Text>
                     </TouchableOpacity>

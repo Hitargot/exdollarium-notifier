@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import PinPad from '../components/PinPad';
 import {
   View,
@@ -25,7 +25,7 @@ import { RootStackParamList } from './types';
 import { showToast } from '../utils/toast';
 import { buildTransactionReceipt } from '../utils/receiptBuilders';
 import { sanitizeReceipt } from '../utils/receiptSanitizer';
-import { getTransactionReceipt } from '../api/client';
+import { getTransactionReceipt, getKYCStatus } from '../api/client';
 import { showInAppConfirm } from '../contexts/ConfirmContext';
 import appTheme from '../styles/theme';
 import { useTheme } from '../theme/index';
@@ -44,7 +44,7 @@ const WithdrawalFormScreen = () => {
   const navigation = useNavigation<NavigationProp>();
   
   const themeCtx = useTheme();
-  const t = themeCtx || appTheme;
+  const t = themeCtx;
   const styles = useMemo(() => createStyles(t), [t]);
 
   const [amount, setAmount] = useState('');
@@ -107,9 +107,32 @@ const WithdrawalFormScreen = () => {
     const numeric = Number(amount.replace(/,/g, ''));
     
     if (!amount || numeric <= 0) return setError('Enter a valid amount');
-    if (numeric < 100) return setError('Minimum withdrawal is ₦100');
+    if (numeric < 500) return setError('Minimum withdrawal is ₦500');
     if (walletBalance !== null && numeric + WITHDRAW_FEE > walletBalance) {
-      return setError('Insufficient funds (including ₦50 fee)');
+      return setError(`Insufficient funds (including ₦${WITHDRAW_FEE} fee)`);
+    }
+
+    // KYC gate: withdrawals of ₦100,000 or more require verified identity
+    if (numeric >= 100000) {
+      try {
+        const kycData = await getKYCStatus();
+        const kycStatus = kycData?.kyc?.status;
+        if (kycStatus !== 'approved') {
+          const msg =
+            kycStatus === 'pending'
+              ? 'Your KYC is still under review. Withdrawals of ₦100,000 or more require a verified identity. Please wait for approval.'
+              : kycStatus === 'rejected'
+              ? 'Your KYC was rejected. Please resubmit your documents to unlock large withdrawals.'
+              : 'Withdrawals of ₦100,000 or more require identity verification (KYC). Please complete your KYC first.';
+          showToast(msg);
+          navigation.navigate('KYC' as any);
+          return;
+        }
+      } catch (kycErr) {
+        // If KYC check fails server-side, block the withdrawal safely
+        showToast('Could not verify your KYC status. Please try again.');
+        return;
+      }
     }
 
     // Re-check server-side PIN status immediately before proceeding.
@@ -286,7 +309,7 @@ const WithdrawalFormScreen = () => {
           <View style={styles.whiteCard}>
             <Text style={styles.sectionLabel}>Amount to Withdraw</Text>
             <View style={styles.hugeInputContainer}>
-              <Text style={styles.currencySymbol}>₦</Text>
+              <Text style={styles.currencySymbol}>{'\u20A6'}</Text>
               <TextInput
                 placeholder="0.00"
                 value={amountDisplay}
@@ -327,6 +350,16 @@ const WithdrawalFormScreen = () => {
                 </View>
               </View>
             )}
+
+            {/* KYC hint shown when amount reaches ₦100,000 threshold */}
+            {Number(amount.replace(/,/g, '')) >= 100000 && (
+              <View style={styles.kycHintBox}>
+                <Ionicons name="shield-outline" size={15} color="#d97706" />
+                <Text style={styles.kycHintText}>
+                  Withdrawals of ₦100,000+ require KYC verification.
+                </Text>
+              </View>
+            )}
           </View>
 
           {/* Destination Section */}
@@ -339,7 +372,7 @@ const WithdrawalFormScreen = () => {
               <View style={{ flex: 1 }}>
                 <Text style={styles.bankName}>{selectedBank.bankName}</Text>
                 <Text style={styles.accountDetails}>
-                  {selectedBank.accountNumber} • {selectedBank.accountName}
+                  {selectedBank.accountNumber} ₦{selectedBank.accountName}
                 </Text>
               </View>
             </View>
@@ -451,6 +484,9 @@ const createStyles = (t: any) => StyleSheet.create({
   feeRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
   feeLabel: { fontSize: 13, color: '#94A3B8', fontWeight: '500' },
   feeValue: { fontSize: 13, color: '#475569', fontWeight: '700' },
+
+  kycHintBox: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, backgroundColor: '#fef3c7', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
+  kycHintText: { fontSize: 12, color: '#92400e', flex: 1, lineHeight: 16 },
 
   bankInfoRow: { flexDirection: 'row', alignItems: 'center' },
   bankIcon: { width: 50, height: 50, backgroundColor: t.colors?.surface || '#EFF6FF', borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 },

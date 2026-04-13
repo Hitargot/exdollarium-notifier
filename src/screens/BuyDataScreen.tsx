@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, TextInput, Alert } from 'react-native';
 import Constants from 'expo-constants';
+import authStorage from '../utils/authStorage';
 
-const API_URL = Constants.expoConfig?.extra?.apiUrl || 'https://exdollarium-6f0f5aab6a7d.herokuapp.com';
+const extra = Constants.expoConfig?.extra as { apiUrl?: string } || {};
+const API_URL = (extra.apiUrl || '').replace(/\/+$/, '');
 
 const BuyDataScreen: React.FC = () => {
   const [bundles, setBundles] = useState<any[]>([]);
@@ -11,7 +13,10 @@ const BuyDataScreen: React.FC = () => {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`${API_URL}/api/data/bundles`);
+        const token = await authStorage.getToken();
+        const res = await fetch(`${API_URL}/api/data/bundles`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
         if (res.ok) {
           const j = await res.json();
           if (j.ok) setBundles(j.bundles || []);
@@ -25,8 +30,13 @@ const BuyDataScreen: React.FC = () => {
   const purchase = async (bundleId: string) => {
     try {
       if (!phone) return Alert.alert('Enter phone number');
+      const token = await authStorage.getToken();
       const res = await fetch(`${API_URL}/api/data/purchase`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ bundleId, phone }),
       });
       const j = await res.json();

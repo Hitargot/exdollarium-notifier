@@ -29,14 +29,13 @@ import { RootStackParamList } from './types';
 import type { DocumentPickerAsset } from 'expo-document-picker';
 
 type NavigationProp = StackNavigationProp<RootStackParamList, 'TradeConfirmation'>;
-const API_URL = Constants.expoConfig?.extra?.apiUrl || 'https://exdollarium-6f0f5aab6a7d.herokuapp.com';
+const API_URL = (Constants.expoConfig?.extra?.apiUrl || '').replace(/\/+$/, '');
 
 type Service = { _id: string; name: string; label?: string; supportsWithdrawal?: boolean; isNew?: boolean };
 
 const TradeConfirmationScreen = () => {
     const navigation = useNavigation<NavigationProp>();
-    const themeCtx = (() => { try { return useTheme(); } catch (e) { return undefined as any; } })();
-    const runtimeTheme = themeCtx || appTheme;
+  const runtimeTheme = useTheme();
     const styles = React.useMemo(() => createStyles(runtimeTheme), [runtimeTheme]);
 
     // State

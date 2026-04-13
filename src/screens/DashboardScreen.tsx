@@ -31,6 +31,7 @@ import SkeletonBox from "../components/SkeletonBox";
 import ActionButton from "../components/ActionButton";
 import ServicePickerModal from "../components/ServicePickerModal";
 import TransactionItem from "../components/TransactionItem";
+import ConfirmModal from "../components/ConfirmModal";
 import {
   getWalletData,
   getConfirmations,
@@ -74,21 +75,17 @@ import Constants from "expo-constants";
 const API_URL = (Constants.expoConfig?.extra?.apiUrl || "").replace(/\/+$/, "");
 
 const DashboardScreen = () => {
-  const themeCtx = (() => {
-    try {
-      return useTheme();
-    } catch (e) {
-      return undefined as any;
-    }
-  })();
+  // useTheme must be called at the top level (Rules of Hooks — not inside callbacks/try-catch).
+  const themeCtx = useTheme();
   // New ThemeProvider exposes the merged theme at top-level, fall back to staticTheme
-  const theme = themeCtx || staticTheme;
+  const theme = (themeCtx as any) || staticTheme;
   // runtime styles bound to theme
   const styles = useStyles(theme);
   const navigation: any = useNavigation();
   const route = useRoute();
 
   const [refreshing, setRefreshing] = useState(false);
+  const [kycModalVisible, setKycModalVisible] = useState(false);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [balanceVisible, setBalanceVisible] = useState<boolean>(true);
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -1200,9 +1197,21 @@ const DashboardScreen = () => {
 
                 <View style={{ marginLeft: 12 }}>
                   <Text style={styles.welcomeSub}>Welcome back,</Text>
-                  <Text style={styles.welcome}>
-                    {profile?.username || "User"}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={styles.welcome}>
+                      {profile?.username || "User"}
+                    </Text>
+                    {profile?.kyc?.status === 'approved' && (
+                      <TouchableOpacity
+                        onPress={() => setKycModalVisible(true)}
+                        activeOpacity={0.8}
+                        style={styles.kycBadge}
+                        accessibilityLabel="KYC Verified — tap for details"
+                      >
+                        <Ionicons name="shield-checkmark" size={12} color="#fff" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
               </>
             )}
@@ -1332,7 +1341,7 @@ const DashboardScreen = () => {
                     ? "#d97706"
                     : profile?.kyc?.status === "rejected"
                     ? "#dc2626"
-                    : t.colors.primary,
+                    : theme.colors.primary,
               },
             ]}
             onPress={() => navigation.navigate("KYC" as any)}
@@ -1521,6 +1530,17 @@ const DashboardScreen = () => {
           }
         }}
       />
+
+      {/* KYC Verified Info Modal */}
+      <ConfirmModal
+        visible={kycModalVisible}
+        title="Identity Verified ✅"
+        message={`Your identity has been verified${profile?.kyc?.autoVerified ? ' automatically' : ' by our team'}.\n\nID Type: ${(profile?.kyc?.idType || '').toUpperCase() || 'N/A'}\nVerified on: ${profile?.kyc?.reviewedAt ? new Date(profile.kyc.reviewedAt).toLocaleDateString() : 'N/A'}`}
+        confirmText="OK"
+        onConfirm={() => setKycModalVisible(false)}
+        onCancel={() => setKycModalVisible(false)}
+        showActions={true}
+      />
     </View>
   );
 };
@@ -1562,6 +1582,19 @@ const createStyles = (t: any) =>
       fontSize: 18,
       fontWeight: "800",
       color: t.colors.text,
+    },
+    kycBadge: {
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      backgroundColor: '#1d9bf0',
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowColor: '#000',
+      shadowOpacity: 0.2,
+      shadowRadius: 3,
+      shadowOffset: { width: 0, height: 1 },
+      elevation: 2,
     },
     earnPill: {
       paddingHorizontal: 12,

@@ -27,8 +27,7 @@ const CalculatorScreen: React.FC<Props> = ({ route }) => {
   const serviceNameParam = route?.params?.serviceName ?? '';
   const navigation = useNavigation<NavigationProp>();
   
-  const themeCtx = (() => { try { return useTheme(); } catch (e) { return undefined; } })();
-  const theme = themeCtx || staticTheme;
+  const theme = useTheme();
   const styles = useStyles(theme);
 
   // States
@@ -133,7 +132,7 @@ const CalculatorScreen: React.FC<Props> = ({ route }) => {
 
   const handleShare = async () => {
     const converted = calculateConversion;
-    const core = `💱 Conversion Details\nService: ${selectedService}\nAmount: ${selectedService === 'Website Recharge' ? selectedAmount : amount} ${targetCurrency.toUpperCase()}\nReceiving: ₦${converted ? formatNumber(converted) : '—'}\nRate: ₦${currentRate ? formatNumber(currentRate) : '—'}`;
+    const core = `💱 Conversion Details\nService: ${selectedService}\nAmount: ${selectedService === 'Website Recharge' ? selectedAmount : amount} ${targetCurrency.toUpperCase()}\nReceiving: ₦${converted ? formatNumber(converted) : '0.00'}\nRate: ₦${currentRate ? formatNumber(currentRate) : '0.00'}`;
     const message = `Shared via Exdollarium\n\n${core}`;
     try {
       await Share.share({ message });
@@ -197,8 +196,8 @@ const CalculatorScreen: React.FC<Props> = ({ route }) => {
 
             <Text style={styles.rateText}>
               {selectedService === 'Website Recharge'
-                ? `Base Rate (5 USD) = ₦${currentRate ? formatNumber(currentRate) : '—'}`
-                : `1 ${targetCurrency.toUpperCase()} = ₦${currentRate ? formatNumber(currentRate) : '—'}`}
+                ? `Base Rate (5 USD) = ₦${currentRate ? formatNumber(currentRate) : '0.00'}`
+                : `1 ${targetCurrency.toUpperCase()} = ₦${currentRate ? formatNumber(currentRate) : '0.00'}`}
             </Text>
 
             {/* Input Section */}
@@ -246,11 +245,11 @@ const CalculatorScreen: React.FC<Props> = ({ route }) => {
                 </View>
               </View>
               <Text style={styles.resultValueLarge}>
-                {convertedValue ? `₦${formatNumber(convertedValue)}` : '₦ 0.00'}
+                {convertedValue ? `₦${formatNumber(convertedValue)}` : '₦0.00'}
               </Text>
               <View style={styles.divider} />
               <Text style={styles.breakdown}>
-                Rate: ₦{currentRate ? formatNumber(currentRate) : '—'} • 
+                Rate: ₦{currentRate ? formatNumber(currentRate) : '—'} •
                 Service: {selectedServiceLabel || selectedService || 'None'}
               </Text>
             </View>

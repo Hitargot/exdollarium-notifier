@@ -38,8 +38,7 @@ const ReceiptScreen = () => {
 
     const receiptRef = useRef<View>(null);
     const navigation = useNavigation<any>();
-    const themeCtx = (() => { try { return useTheme(); } catch (e) { return undefined as any; } })();
-    const theme = themeCtx || appTheme;
+  const theme = useTheme();
     const styles = useMemo(() => createStyles(theme), [theme]);
 
     const buildReceiptHtml = (data: any, logoDataUri?: string, watermarkDataUri?: string) => {

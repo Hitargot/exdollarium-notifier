@@ -14,8 +14,7 @@ type Props = {
 };
 
 const VerifyMatches: React.FC<Props> = ({ matches, title = 'Found in your saved accounts', onSelect }) => {
-  const themeCtx = (() => { try { return useTheme(); } catch (e) { return undefined as any; } })();
-  const t = themeCtx || staticTheme;
+  const t = useTheme();
   const styles = useMemo(() => createStyles(t), [t]);
 
   if (!Array.isArray(matches) || matches.length === 0) return null;
@@ -46,7 +45,7 @@ const VerifyMatches: React.FC<Props> = ({ matches, title = 'Found in your saved 
                <Text style={styles.accountNumber}>
                  {String(m.accountNumber || m.account || '').replace(/\D/g, '')}
                </Text>
-               {m.bankCode && <Text style={styles.dot}> â€¢ </Text>}
+               {m.bankCode && <Text style={styles.dot}> â€?</Text>}
                {m.bankCode && <Text style={styles.bankCode}>{m.bankCode}</Text>}
             </View>
           </View>
